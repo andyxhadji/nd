@@ -99,6 +99,32 @@ class ClaimResult(BaseModel):
     project: str | None = None
 
 
+class WorkspaceInput(BaseModel):
+    """Input for workspace preparation."""
+
+    task_id: str
+    project: str
+    platform: str
+    platform_host: str
+    repo_owner: str
+    repo_name: str
+    head_branch: str | None = None
+    base_branch: str | None = None
+    is_issue: bool = False
+    issue_short_id: str | None = None
+
+
+class WorkspaceResult(BaseModel):
+    """Result of workspace preparation."""
+
+    prepared: bool
+    repo_path: str | None = None
+    branch: str | None = None
+    base_branch: str | None = None
+    bare_path: str | None = None
+    error: str | None = None
+
+
 class TaskDetails(BaseModel):
     """Details of a claimed task."""
 
