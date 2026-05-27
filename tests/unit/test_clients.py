@@ -5,6 +5,7 @@ import pytest
 from datetime import datetime, timezone
 from nd.clients.middleman import MiddlemanClient, MRComment
 from nd.clients.kata import KataClient, KataTask
+from nd.clients.platform import PlatformClient
 
 
 class TestMiddlemanClient:
@@ -70,3 +71,36 @@ class TestKataClient:
         assert "## MR Context" in body
         assert "org/repo!42" in body
         assert "Please fix this" in body
+
+
+class TestPlatformClient:
+    def test_gitlab_comment_url(self):
+        client = PlatformClient(
+            github_token="",
+            gitlab_token="test-token",
+        )
+        url = client._gitlab_comment_url(
+            host="gitlab.com",
+            owner="org",
+            repo="repo",
+            mr_number=42,
+            discussion_id="abc123",
+        )
+        assert "gitlab.com" in url
+        assert "merge_requests/42" in url
+        assert "discussions/abc123" in url
+
+    def test_github_comment_url(self):
+        client = PlatformClient(
+            github_token="test-token",
+            gitlab_token="",
+        )
+        url = client._github_comment_url(
+            owner="org",
+            repo="repo",
+            pr_number=42,
+            comment_id=12345,
+        )
+        assert "api.github.com" in url
+        assert "pulls/42" in url
+        assert "12345" in url

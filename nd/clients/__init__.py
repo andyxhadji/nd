@@ -2,5 +2,6 @@
 
 from nd.clients.middleman import MiddlemanClient, MRComment
 from nd.clients.kata import KataClient, KataTask
+from nd.clients.platform import PlatformClient
 
-__all__ = ["MiddlemanClient", "MRComment", "KataClient", "KataTask"]
+__all__ = ["MiddlemanClient", "MRComment", "KataClient", "KataTask", "PlatformClient"]
