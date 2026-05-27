@@ -525,9 +525,51 @@ Draft a response.""",
 
 
 def _parse_task_body(body: str) -> dict | None:
-    """Parse structured task body to extract context."""
-    context = {}
+    """Parse structured task body to extract context.
 
+    Supports both MR-shaped bodies (built by ``KataClient.build_task_body``,
+    starting with ``## MR Context``) and issue-shaped bodies (built by
+    ``KataClient.build_issue_task_body``, starting with ``## Issue Context``).
+    Issue bodies have no branch info; ``prepare_workspace`` will create a
+    branch off origin/HEAD.
+    """
+    context: dict = {}
+
+    # Issue-shaped body. ``## Issue Context`` is the first heading and
+    # ``**Issue:** [owner/repo#N](url)`` identifies the source issue.
+    issue_match = re.search(
+        r"## Issue Context\s*\n.*?\*\*Issue:\*\* \[([^/]+)/([^#]+)#(\d+)\]\((https?://[^)]+)\)",
+        body,
+        re.DOTALL,
+    )
+    if issue_match:
+        context["category"] = "issue"
+        context["repo_owner"] = issue_match.group(1)
+        context["repo_name"] = issue_match.group(2)
+        context["mr_number"] = int(issue_match.group(3))
+        context["mr_url"] = issue_match.group(4)
+
+        title_match = re.search(r"\*\*Title:\*\* (.+)", body)
+        if title_match:
+            context["mr_title"] = title_match.group(1).strip()
+
+        platform_match = re.search(r"Platform:\*\* (\w+) \(([^)]+)\)", body)
+        if platform_match:
+            context["platform"] = platform_match.group(1)
+            context["platform_host"] = platform_match.group(2)
+
+        # Issue description: text between "## Issue Description\n**Author:** ...\n\n"
+        # and end of body.
+        desc_match = re.search(
+            r"## Issue Description\n\*\*Author:\*\* [^\n]+\n\n(.*)$",
+            body,
+            re.DOTALL,
+        )
+        context["comment_body"] = desc_match.group(1).strip() if desc_match else body
+
+        return context
+
+    # MR-shaped body (existing path).
     # Extract MR URL
     mr_match = re.search(r"\[.*?\]\((https?://[^)]+)\)", body)
     if mr_match:
@@ -560,10 +602,11 @@ def _parse_task_body(body: str) -> dict | None:
     if title_match:
         context["mr_title"] = title_match.group(1).strip()
 
-    # Extract repo_owner from MR link (format: [owner/repo!number])
-    owner_match = re.search(r"\*\*MR:\*\* \[([^/]+)/", body)
+    # Extract repo_owner / repo_name from MR link (format: [owner/repo!number])
+    owner_match = re.search(r"\*\*MR:\*\* \[([^/]+)/([^!]+)!", body)
     if owner_match:
         context["repo_owner"] = owner_match.group(1)
+        context["repo_name"] = owner_match.group(2)
 
     # Extract comment body
     comment_match = re.search(
