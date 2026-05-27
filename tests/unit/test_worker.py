@@ -1,6 +1,7 @@
 """Unit tests for nd.worker.agent helpers."""
 
 from nd.clients.kata import KataClient
+from nd.schemas import WorkspaceResult
 from nd.worker.agent import _parse_task_body
 
 
@@ -68,3 +69,35 @@ class TestParseTaskBody:
         ctx = _parse_task_body("just some random text")
         assert ctx is not None
         assert ctx["comment_body"] == "just some random text"
+
+
+class TestWorkspaceResultShape:
+    """The reasoners mint WorkspaceResult dicts that flow through app.call.
+
+    These tests assert the serialized shape so process_task's
+    ``WorkspaceResult(**ws_result)`` round-trip stays stable.
+    """
+
+    def test_failure_round_trips(self):
+        payload = WorkspaceResult(prepared=False, error="boom").model_dump()
+        assert payload["prepared"] is False
+        assert payload["error"] == "boom"
+        assert payload["repo_path"] is None
+        assert payload["bare_path"] is None
+
+        rebuilt = WorkspaceResult(**payload)
+        assert rebuilt.prepared is False
+        assert rebuilt.repo_path is None
+
+    def test_success_round_trips(self):
+        payload = WorkspaceResult(
+            prepared=True,
+            repo_path="/var/nd/work/myproj-7by6",
+            branch="master",
+            base_branch="master",
+            bare_path="/var/nd/repos/github.com/octocat/Hello-World.git",
+        ).model_dump()
+        rebuilt = WorkspaceResult(**payload)
+        assert rebuilt.prepared is True
+        assert rebuilt.repo_path == "/var/nd/work/myproj-7by6"
+        assert rebuilt.bare_path.endswith(".git")
