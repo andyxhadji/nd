@@ -2,8 +2,11 @@
 
 import asyncio
 import json
+import logging
 import os
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -86,6 +89,7 @@ class KataClient:
             results = data.get("results", [])
             return [KataTask.from_dict(r["issue"]) for r in results if r.get("issue")]
         except json.JSONDecodeError:
+            logger.warning("kata search returned non-JSON stdout: %r", stdout)
             return []
 
     async def create(
@@ -120,6 +124,7 @@ class KataClient:
             issue = data.get("issue") or {}
             return issue.get("uid") or issue.get("short_id")
         except json.JSONDecodeError:
+            logger.warning("kata create returned non-JSON stdout: %r", stdout)
             return None
 
     async def ready(self, label: str, unowned: bool = True) -> list[KataTask]:
@@ -135,6 +140,7 @@ class KataClient:
             data = json.loads(stdout)
             return [KataTask.from_dict(t) for t in data.get("tasks", [])]
         except json.JSONDecodeError:
+            logger.warning("kata ready returned non-JSON stdout: %r", stdout)
             return []
 
     async def assign(self, task_id: str, owner: str) -> bool:

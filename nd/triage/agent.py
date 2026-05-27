@@ -44,6 +44,11 @@ def create_triage_agent(
     kata = KataClient(kata_server=config.kata_server)
     classifier = CommentClassifier()
 
+    @app.on_event("shutdown")
+    async def _close_clients() -> None:
+        """Close httpx connection pools on agent shutdown."""
+        await middleman.close()
+
     # ========================================================================
     # Reasoners
     # ========================================================================

@@ -50,6 +50,11 @@ def create_worker_agent(
     )
     analyzer = TaskAnalyzer()
 
+    @app.on_event("shutdown")
+    async def _close_clients() -> None:
+        """Close httpx connection pools on agent shutdown."""
+        await _platform.close()
+
     # ========================================================================
     # Reasoners
     # ========================================================================
