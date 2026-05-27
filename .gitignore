@@ -27,3 +27,4 @@ htmlcov/
 
 # Local scripts with secrets
 test-local.sh
+.env.local
