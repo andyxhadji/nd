@@ -392,6 +392,11 @@ Create a detailed spec.""",
                 success=False,
                 error=f"Runtime error: {e}",
             ).model_dump()
+        except Exception as e:
+            return ExecutionResult(
+                success=False,
+                error=f"Unexpected error: {type(e).__name__}: {e}",
+            ).model_dump()
 
     @app.reasoner()
     async def run_roborev(

@@ -110,9 +110,9 @@ class PlatformClient:
     ) -> bool:
         """Post a reply to a GitHub PR comment."""
         client = await self._get_github_client()
-        owner_escaped = quote(owner, safe="")
-        repo_escaped = quote(repo, safe="")
-        path = f"/repos/{owner_escaped}/{repo_escaped}/pulls/{pr_number}/comments/{comment_id}/replies"
+        url = self._github_comment_url(owner, repo, pr_number, comment_id)
+        # Use relative URL since base_url is set
+        path = url.replace("https://api.github.com", "")
         response = await client.post(path, json={"body": body})
         return response.status_code in (200, 201)
 
