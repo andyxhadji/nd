@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 from dataclasses import dataclass
 
 
@@ -18,11 +19,19 @@ class KataTask:
 
     @classmethod
     def from_dict(cls, data: dict) -> "KataTask":
-        """Create from kata JSON output."""
+        """Create from a kata issue JSON object.
+
+        kata returns issues as ``{"id": int, "project_id": int, "title": ...,
+        "body": ..., ...}`` with no top-level "project" name or "labels"
+        list. We coerce id to str and fall back gracefully when the optional
+        fields are absent so this works for both the search-results path
+        (which omits labels) and any future shape that includes them.
+        """
+        issue_id = data.get("uid") or data.get("short_id") or data.get("id")
         return cls(
-            id=data["id"],
-            project=data["project"],
-            title=data["title"],
+            id=str(issue_id) if issue_id is not None else "",
+            project=str(data.get("project_name") or data.get("project_id") or ""),
+            title=data.get("title", ""),
             body=data.get("body", ""),
             labels=data.get("labels", []),
             owner=data.get("owner"),
@@ -36,11 +45,17 @@ class KataClient:
         self.kata_server = kata_server
 
     def _base_cmd(self) -> list[str]:
-        """Build base kata command with server flag if set."""
-        cmd = ["kata"]
+        """Build base kata command. Server selection is via the KATA_SERVER
+        env var (the kata CLI has no --server flag); see _run for env wiring."""
+        return ["kata"]
+
+    def _env(self) -> dict[str, str]:
+        """Build environment for subprocess. Sets KATA_SERVER when configured;
+        otherwise inherits the parent env unchanged."""
+        env = os.environ.copy()
         if self.kata_server:
-            cmd.extend(["--server", self.kata_server])
-        return cmd
+            env["KATA_SERVER"] = self.kata_server
+        return env
 
     async def _run(self, args: list[str]) -> tuple[int, str, str]:
         """Run kata command and return (returncode, stdout, stderr)."""
@@ -49,12 +64,18 @@ class KataClient:
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=self._env(),
         )
         stdout, stderr = await proc.communicate()
         return proc.returncode, stdout.decode(), stderr.decode()
 
     async def search(self, project: str, query: str) -> list[KataTask]:
-        """Search for tasks matching a query."""
+        """Search for tasks matching a query.
+
+        kata's search response shape:
+        ``{"results": [{"issue": {...}, "score": ..., "matched_in": [...]}]}``.
+        We unwrap the nested issue object before constructing KataTask.
+        """
         returncode, stdout, stderr = await self._run(
             ["search", "--project", project, "--json", query]
         )
@@ -62,7 +83,8 @@ class KataClient:
             return []
         try:
             data = json.loads(stdout)
-            return [KataTask.from_dict(t) for t in data.get("tasks", [])]
+            results = data.get("results", [])
+            return [KataTask.from_dict(r["issue"]) for r in results if r.get("issue")]
         except json.JSONDecodeError:
             return []
 
@@ -94,7 +116,9 @@ class KataClient:
             return None
         try:
             data = json.loads(stdout)
-            return data.get("id")
+            # kata's create response shape: {"kata_api_version": 1, "issue": {...}, ...}
+            issue = data.get("issue") or {}
+            return issue.get("uid") or issue.get("short_id")
         except json.JSONDecodeError:
             return None
 

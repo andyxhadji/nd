@@ -10,7 +10,10 @@ def main():
     print(f"Starting nd worker agent: {app.node_id}")
     print(f"Instance ID: {config.agent_instance_id}")
     print(f"Control plane: {app.agentfield_server}")
-    app.run(auto_port=True)
+    if config.agent_port:
+        app.run(host="0.0.0.0", port=config.agent_port, auto_port=False)
+    else:
+        app.run(auto_port=True)
 
 
 if __name__ == "__main__":

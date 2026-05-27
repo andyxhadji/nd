@@ -26,6 +26,7 @@ class Config:
     gitlab_token: str
     current_user: str
     assigned_usernames: list[str]
+    agent_port: int
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -50,6 +51,7 @@ class Config:
             gitlab_token=os.getenv("GITLAB_TOKEN", ""),
             current_user=os.getenv("ND_CURRENT_USER", ""),
             assigned_usernames=_parse_usernames(os.getenv("ND_ASSIGNED_USERNAMES", "")),
+            agent_port=int(os.getenv("AGENT_PORT", "0")),
         )
 
 

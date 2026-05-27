@@ -32,7 +32,8 @@ All configuration via environment variables:
 | `AGENTFIELD_URL` | `http://localhost:8080` | AgentField control plane URL |
 | `MIDDLEMAN_URL` | `http://localhost:8091` | Middleman API URL |
 | `MIDDLEMAN_DB` | `~/.middleman/middleman.db` | Middleman SQLite database path |
-| `KATA_SERVER` | (empty) | Kata server URL (uses local if empty) |
+| `KATA_SERVER` | (empty) | Kata daemon URL. Empty → local auto-start (host runs only). For Docker, compose sets `http://127.0.0.1:7878` so agents reach the in-compose `kata-daemon` service over the shared network namespace. |
+| `AGENT_PORT` | `0` (auto) | Fixed port for the agent's HTTP server. Used by Docker Compose to give each agent (triage, worker-1, worker-2) a distinct port inside the shared `kata-daemon` netns. Empty/0 → auto-pick. |
 | `CONFIDENCE_THRESHOLD` | `70` | Minimum confidence for auto-execution |
 | `ROBOREV_MAX_ITERATIONS` | `3` | Max roborev-refine iterations |
 | `TRIAGE_MODEL` | `openrouter/anthropic/claude-sonnet-4` | LLM model for triage |
@@ -94,6 +95,23 @@ docker compose exec triage printenv ND_ASSIGNED_USERNAMES
 ```
 
 > **Precedence note:** Variables listed under `environment:` in `docker-compose.yml` take precedence over `env_file`. If a var is interpolated like `- FOO=${FOO}` and your shell doesn't export `FOO`, it resolves to an empty string and overrides `.env.local`. To avoid surprises, define the var only in `.env.local` (not also in `environment:`), or `export` it in the shell before running compose.
+
+### Kata daemon for Docker
+
+Compose runs kata's daemon as its own service (`kata-daemon`) listening on `127.0.0.1:7878`. The agent services (`triage`, `worker-1`, `worker-2`) all use `network_mode: "service:kata-daemon"` so they share that container's network namespace and can reach the daemon on loopback — required because kata refuses to start on a non-loopback TCP listener (see `internal/daemon/auth.go` `checkAuthStartup`).
+
+Key consequences:
+
+- **Tasks created from compose live in the `kata-data` named volume**, not in your host's `~/.kata/kata.db`. They are not visible to the host `kata` CLI. This is the price of running kata fully inside docker on macOS, where Docker Desktop cannot bridge host unix sockets into containers.
+- **Agents share one network namespace.** Each agent binds a distinct `AGENT_PORT` (8001, 8002, 8003) to avoid collisions, and is reachable from agentfield as `kata-daemon:<AGENT_PORT>`.
+- **No `KATA_HOME`/`KATA_DB`/`KATA_DB_HASH` plumbing is needed in `.env.local`** — those concepts only matter to the daemon itself, which is configured by the `kata-daemon` service block.
+
+To inspect tasks created from compose:
+
+```bash
+docker compose exec kata-daemon kata list
+docker compose exec kata-daemon kata projects list
+```
 
 ## Architecture
 

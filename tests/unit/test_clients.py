@@ -27,8 +27,9 @@ def _patch_kata_subprocess(monkeypatch, *, returncode=0, stdout=b"", stderr=b"")
     """Patch asyncio.create_subprocess_exec to return a fake proc; return captured args."""
     captured: dict = {}
 
-    async def fake_exec(*cmd, stdout=None, stderr=None):
+    async def fake_exec(*cmd, stdout=None, stderr=None, env=None):
         captured["cmd"] = cmd
+        captured["env"] = env
         return _FakeProc(
             returncode, stdout=_patch_kata_subprocess._stdout, stderr=_patch_kata_subprocess._stderr
         )
@@ -220,16 +221,22 @@ class TestMiddlemanClient:
 
 class TestKataClient:
     def test_parse_task(self):
+        # Mirrors kata's actual issue JSON shape (see internal/api responses):
+        # uid is the canonical identifier, project_name/labels/owner may be
+        # absent in some response paths (e.g. search results omit labels).
         raw = {
-            "id": "abc123",
-            "project": "testrepo",
+            "id": 42,
+            "uid": "01KSNQYBPY6R0CB7KGH9MDA4CN",
+            "short_id": "a4cn",
+            "project_id": 7,
+            "project_name": "testrepo",
             "title": "Fix bug",
             "body": "## MR Context\n...",
             "labels": ["from-mr", "nd"],
             "owner": None,
         }
         task = KataTask.from_dict(raw)
-        assert task.id == "abc123"
+        assert task.id == "01KSNQYBPY6R0CB7KGH9MDA4CN"
         assert task.project == "testrepo"
         assert "nd" in task.labels
 
@@ -277,34 +284,70 @@ class TestKataClientAsync:
         client = KataClient()
         assert client._base_cmd() == ["kata"]
 
-    def test_base_cmd_with_server(self):
-        client = KataClient(kata_server="kata.local:7000")
-        assert client._base_cmd() == ["kata", "--server", "kata.local:7000"]
+    def test_base_cmd_omits_server_flag(self):
+        # kata CLI has no --server flag; server is selected via KATA_SERVER env.
+        client = KataClient(kata_server="unix:///run/kata/daemon.sock")
+        assert client._base_cmd() == ["kata"]
+
+    def test_env_sets_kata_server_when_configured(self):
+        client = KataClient(kata_server="unix:///run/kata/daemon.sock")
+        assert client._env()["KATA_SERVER"] == "unix:///run/kata/daemon.sock"
+
+    def test_env_omits_kata_server_when_unset(self, monkeypatch):
+        monkeypatch.delenv("KATA_SERVER", raising=False)
+        client = KataClient()
+        assert "KATA_SERVER" not in client._env()
 
     @pytest.mark.asyncio
     async def test_run_captures_command_and_output(self, monkeypatch):
         captured = _patch_kata_subprocess(
             monkeypatch, returncode=0, stdout=b"hello", stderr=b"warn"
         )
-        client = KataClient(kata_server="srv:1")
+        client = KataClient(kata_server="unix:///run/kata/daemon.sock")
         rc, out, err = await client._run(["search", "x"])
         assert rc == 0
         assert out == "hello"
         assert err == "warn"
-        assert captured["cmd"] == ("kata", "--server", "srv:1", "search", "x")
+        assert captured["cmd"] == ("kata", "search", "x")
+        assert captured["env"]["KATA_SERVER"] == "unix:///run/kata/daemon.sock"
 
     @pytest.mark.asyncio
     async def test_search_returns_tasks(self, monkeypatch):
+        # Real kata search response: {"results": [{"issue": {...}, "score":
+        # ..., "matched_in": [...]}, ...]}. Search results don't include
+        # "labels", so the parsed KataTask.labels is [].
         payload = {
-            "tasks": [
-                {"id": "t1", "project": "p", "title": "T1", "labels": ["nd"]},
-                {"id": "t2", "project": "p", "title": "T2"},
-            ]
+            "kata_api_version": 1,
+            "query": "query",
+            "results": [
+                {
+                    "issue": {
+                        "id": 1,
+                        "uid": "t1",
+                        "project_id": 7,
+                        "project_name": "p",
+                        "title": "T1",
+                    },
+                    "score": 0.5,
+                    "matched_in": ["title"],
+                },
+                {
+                    "issue": {
+                        "id": 2,
+                        "uid": "t2",
+                        "project_id": 7,
+                        "project_name": "p",
+                        "title": "T2",
+                    },
+                    "score": 0.4,
+                    "matched_in": ["title"],
+                },
+            ],
         }
         _patch_kata_subprocess(monkeypatch, returncode=0, stdout=json.dumps(payload).encode())
         tasks = await KataClient().search("p", "query")
         assert [t.id for t in tasks] == ["t1", "t2"]
-        assert tasks[0].labels == ["nd"]
+        assert tasks[0].labels == []
         assert tasks[1].labels == []
 
     @pytest.mark.asyncio
@@ -319,7 +362,22 @@ class TestKataClientAsync:
 
     @pytest.mark.asyncio
     async def test_create_passes_labels_and_returns_id(self, monkeypatch):
-        captured = _patch_kata_subprocess(monkeypatch, returncode=0, stdout=b'{"id": "new-task"}')
+        # kata's actual create response wraps the issue: top-level "id" is
+        # not present; we read issue.uid (or issue.short_id as fallback).
+        stdout = json.dumps(
+            {
+                "kata_api_version": 1,
+                "issue": {
+                    "id": 1,
+                    "uid": "new-task",
+                    "short_id": "abcd",
+                    "project_id": 7,
+                    "title": "t",
+                },
+                "changed": True,
+            }
+        ).encode()
+        captured = _patch_kata_subprocess(monkeypatch, returncode=0, stdout=stdout)
         task_id = await KataClient().create(
             title="t",
             body="b",
