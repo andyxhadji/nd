@@ -5,7 +5,7 @@ import os
 import re
 from datetime import datetime, timezone
 
-from agentfield import Agent, AIConfig, ApprovalResult, on_schedule
+from agentfield import Agent, AIConfig, on_schedule
 from pydantic import BaseModel
 
 from nd.config import config
@@ -128,7 +128,8 @@ def create_worker_agent(
         )
         analysis = AnalysisResult(**analysis_result)
 
-        # Check confidence threshold
+        # Check confidence threshold - create spec for low confidence tasks
+        spec: SpecDocument | None = None
         if analysis.confidence < config.confidence_threshold:
             # Create spec and pause for review
             spec_result = await app.call(
@@ -167,6 +168,7 @@ def create_worker_agent(
             comment_body=context["comment_body"],
             repo_path=f"/tmp/{project}",
             head_branch=context.get("head_branch", "main"),
+            spec=spec.model_dump() if spec else None,
         )
         execution = ExecutionResult(**exec_result)
 
@@ -528,6 +530,16 @@ def _parse_task_body(body: str) -> dict | None:
     category_match = re.search(r"Category:\*\* (\w+)", body)
     if category_match:
         context["category"] = category_match.group(1)
+
+    # Extract MR title
+    title_match = re.search(r"\*\*Title:\*\* (.+)", body)
+    if title_match:
+        context["mr_title"] = title_match.group(1).strip()
+
+    # Extract repo_owner from MR link (format: [owner/repo!number])
+    owner_match = re.search(r"\*\*MR:\*\* \[([^/]+)/", body)
+    if owner_match:
+        context["repo_owner"] = owner_match.group(1)
 
     # Extract comment body
     comment_match = re.search(

@@ -34,6 +34,9 @@ services:
       - AGENT_INSTANCE_ID=worker-1
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITLAB_TOKEN=${GITLAB_TOKEN}
+      - KATA_SERVER=${KATA_SERVER:-}
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}
+      - ROBOREV_MAX_ITERATIONS=${ROBOREV_MAX_ITERATIONS:-3}
     depends_on:
       - agentfield
     restart: unless-stopped
@@ -48,6 +51,9 @@ services:
       - AGENT_INSTANCE_ID=worker-2
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITLAB_TOKEN=${GITLAB_TOKEN}
+      - KATA_SERVER=${KATA_SERVER:-}
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}
+      - ROBOREV_MAX_ITERATIONS=${ROBOREV_MAX_ITERATIONS:-3}
     depends_on:
       - agentfield
     restart: unless-stopped
