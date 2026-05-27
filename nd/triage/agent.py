@@ -54,9 +54,10 @@ def create_triage_agent(
         """
         Poll middleman for new MR comments and create tasks for actionable ones.
 
-        Runs every 5 minutes via cron trigger. The `payload` parameter accepts
-        the cron event ({expression, fired_at, timezone}) that AgentField
-        passes as a single positional argument; it is unused.
+        Triggered manually (cron decorator disabled). The `payload` parameter
+        accepts the cron event ({expression, fired_at, timezone}) that
+        AgentField passes as a single positional argument when triggered via
+        cron; it is unused.
 
         Note: parameter is intentionally NOT named `trigger` or `webhook` —
         AgentField auto-injects those names as kwargs (agent.py:2202-2205),
@@ -272,10 +273,15 @@ Respond with:
             ).model_dump()
 
     @app.reasoner(tags=["entry"])
-    async def poll_issues() -> dict:
+    async def poll_issues(payload: dict | None = None) -> dict:
         """
         Poll middleman for open issues assigned to configured usernames
         and create tasks for each.
+
+        Triggered manually. The `payload` parameter accepts the cron event
+        that AgentField passes as a single positional argument when triggered
+        via cron; it is unused. Parameter is intentionally NOT named `trigger`
+        or `webhook` (those names are auto-injected as kwargs by AgentField).
         """
         if not config.assigned_usernames:
             return IssuePollResult(

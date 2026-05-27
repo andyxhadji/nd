@@ -56,11 +56,18 @@ def create_worker_agent(
 
     @app.reasoner(tags=["entry"])
     # @on_schedule("* * * * *")  # Disabled - trigger manually
-    async def claim_task() -> dict:
+    async def claim_task(payload: dict | None = None) -> dict:
         """
         Poll kata for unclaimed tasks and claim one for processing.
 
-        Runs every minute via cron trigger.
+        Triggered manually (cron decorator disabled). The `payload` parameter
+        accepts the cron event ({expression, fired_at, timezone}) that
+        AgentField passes as a single positional argument when triggered via
+        cron; it is unused.
+
+        Note: parameter is intentionally NOT named `trigger` or `webhook` —
+        AgentField auto-injects those names as kwargs, which would collide
+        with the positional payload from cron triggers.
         """
         # Get available tasks
         tasks = await kata.ready(label="nd", unowned=True)

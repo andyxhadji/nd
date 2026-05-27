@@ -70,28 +70,41 @@ class Issue:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Issue":
-        """Create from API response dict."""
-        created_at = data["created_at"]
-        if isinstance(created_at, str):
-            created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        updated_at = data["updated_at"]
-        if isinstance(updated_at, str):
-            updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        """Create from API response dict.
+
+        Middleman's /api/v1/issues returns PascalCase top-level keys (ID, Number,
+        CreatedAt, ...) with platform info nested under "repo". Older/test fixtures
+        use snake_case. Accept both.
+        """
+
+        def pick(*keys, default=None):
+            for k in keys:
+                if k in data:
+                    return data[k]
+            return default
+
+        repo = data.get("repo") or {}
+
+        def parse_dt(value):
+            if isinstance(value, str):
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return value
+
         return cls(
-            id=str(data["id"]),
-            number=int(data["number"]),
-            title=data["title"],
-            body=data.get("body", ""),
-            state=data["state"],
-            author=data["author"],
+            id=str(pick("id", "ID")),
+            number=int(pick("number", "Number")),
+            title=pick("title", "Title"),
+            body=pick("body", "Body", default="") or "",
+            state=pick("state", "State"),
+            author=pick("author", "Author"),
             assignees=data.get("assignees", []),
-            url=data["url"],
-            created_at=created_at,
-            updated_at=updated_at,
-            platform=data["platform"],
-            platform_host=data["platform_host"],
-            repo_owner=data["repo_owner"],
-            repo_name=data["repo_name"],
+            url=pick("url", "URL"),
+            created_at=parse_dt(pick("created_at", "CreatedAt")),
+            updated_at=parse_dt(pick("updated_at", "UpdatedAt")),
+            platform=pick("platform", default=repo.get("provider")),
+            platform_host=pick("platform_host", default=repo.get("platform_host")),
+            repo_owner=pick("repo_owner", default=repo.get("owner")),
+            repo_name=pick("repo_name", default=repo.get("name")),
         )
 
 

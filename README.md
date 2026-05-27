@@ -46,9 +46,15 @@ All configuration via environment variables:
 
 ### Setting environment variables
 
+A starter template lives at `.env.example`. Copy it to `.env.local` (gitignored) and fill in real values before running anything that depends on it (including `docker compose up`, which mounts `.env.local` via `env_file:` and will fail if the file is missing):
+
+```bash
+cp .env.example .env.local
+```
+
 **For local runs** (`python -m nd.triage`, `pytest`, `./test-local.sh`):
 
-Create a `.env.local` file in the repo root and source it before running, or use `./test-local.sh` which loads it automatically:
+Source `.env.local` before running, or use `./test-local.sh` which loads it automatically:
 
 ```bash
 # .env.local

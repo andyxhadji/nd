@@ -177,6 +177,46 @@ class TestMiddlemanClient:
         assert issue.assignees == ["user1", "user2"]
         assert issue.platform == "github"
 
+    def test_parse_issue_middleman_shape(self):
+        """Real middleman /api/v1/issues response uses PascalCase top-level keys
+        and nests platform info under 'repo'."""
+        raw = {
+            "ID": 5894,
+            "Number": 11,
+            "Title": "Bug: blank board preview",
+            "Author": "andyxhadji",
+            "State": "open",
+            "Body": "When I open the UI, the board preview is blank.",
+            "URL": "https://github.com/andyxhadji/sweets/issues/11",
+            "CreatedAt": "2026-05-27T18:15:43Z",
+            "UpdatedAt": "2026-05-27T18:15:45Z",
+            "ClosedAt": None,
+            "assignees": ["andyxhadji"],
+            "repo": {
+                "provider": "github",
+                "platform_host": "github.com",
+                "owner": "andyxhadji",
+                "name": "sweets",
+            },
+            "platform_host": "github.com",
+            "repo_owner": "andyxhadji",
+            "repo_name": "sweets",
+        }
+        issue = Issue.from_dict(raw)
+        assert issue.id == "5894"
+        assert issue.number == 11
+        assert issue.title == "Bug: blank board preview"
+        assert issue.body == "When I open the UI, the board preview is blank."
+        assert issue.author == "andyxhadji"
+        assert issue.state == "open"
+        assert issue.assignees == ["andyxhadji"]
+        assert issue.url == "https://github.com/andyxhadji/sweets/issues/11"
+        assert issue.platform == "github"
+        assert issue.platform_host == "github.com"
+        assert issue.repo_owner == "andyxhadji"
+        assert issue.repo_name == "sweets"
+        assert issue.created_at.year == 2026
+
 
 class TestKataClient:
     def test_parse_task(self):
@@ -491,6 +531,7 @@ class TestPlatformClientAsync:
         )
         assert result is True
         assert called["discussion_id"] == "d-abc"
+        await client.close()
 
     @pytest.mark.asyncio
     async def test_post_response_dispatches_github(self, monkeypatch):
@@ -514,6 +555,7 @@ class TestPlatformClientAsync:
         )
         assert result is True
         assert called["comment_id"] == 12345
+        await client.close()
 
     @pytest.mark.asyncio
     async def test_post_response_github_rejects_non_numeric_thread_id(self):
@@ -528,6 +570,7 @@ class TestPlatformClientAsync:
                 thread_id="not-a-number",
                 body="b",
             )
+        await client.close()
 
     @pytest.mark.asyncio
     async def test_post_response_unsupported_platform(self):
@@ -542,6 +585,7 @@ class TestPlatformClientAsync:
                 thread_id="1",
                 body="b",
             )
+        await client.close()
 
     @pytest.mark.asyncio
     async def test_close_idempotent_without_init(self):
