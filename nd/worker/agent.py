@@ -462,15 +462,35 @@ Create a detailed spec.""",
 
         try:
             await app.harness(
-                goal=goal,
+                prompt=goal,
                 provider="claude-code",
                 tools=["read", "write", "edit", "bash"],
-                max_iterations=20,
+                max_turns=20,
+                cwd=repo_path,
             )
 
-            # Parse harness result for files changed
-            files_changed: list[str] = []
-            commit_sha = None
+            # Capture the actual commit_sha and changed-file list from the
+            # worktree so downstream reasoners (run_roborev, draft_response)
+            # see real values instead of placeholders.
+            async def _git(args: list[str]) -> tuple[int, str]:
+                proc = await asyncio.create_subprocess_exec(
+                    "git",
+                    "-C",
+                    repo_path,
+                    *args,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                out, _ = await proc.communicate()
+                return proc.returncode, out.decode().strip()
+
+            rc_sha, sha = await _git(["rev-parse", "HEAD"])
+            commit_sha = sha if rc_sha == 0 and sha else None
+
+            rc_files, files_text = await _git(
+                ["diff", "--name-only", "HEAD~1..HEAD"],
+            )
+            files_changed = [f for f in files_text.splitlines() if f] if rc_files == 0 else []
 
             return ExecutionResult(
                 success=True,
