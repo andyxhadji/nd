@@ -49,7 +49,7 @@ def create_triage_agent(
     # ========================================================================
 
     @app.reasoner(tags=["entry"])
-    @on_schedule("*/5 * * * *")
+    # @on_schedule("*/5 * * * *")  # Disabled - trigger manually
     async def poll_comments() -> dict:
         """
         Poll middleman for new MR comments and create tasks for actionable ones.

@@ -64,7 +64,7 @@ def create_worker_agent(
     # ========================================================================
 
     @app.reasoner(tags=["entry"])
-    @on_schedule("* * * * *")
+    # @on_schedule("* * * * *")  # Disabled - trigger manually
     async def claim_task() -> dict:
         """
         Poll kata for unclaimed tasks and claim one for processing.
