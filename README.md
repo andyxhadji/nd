@@ -41,7 +41,53 @@ All configuration via environment variables:
 | `GITHUB_TOKEN` | (empty) | GitHub API token for posting responses |
 | `GITLAB_TOKEN` | (empty) | GitLab API token for posting responses |
 | `ND_CURRENT_USER` | (empty) | Username to filter MRs |
-| `OPENROUTER_API_KEY` | (required) | OpenRouter API key |
+| `ND_ASSIGNED_USERNAMES` | (empty) | Comma-separated usernames for `poll_issues`. If empty, `poll_issues` returns an error |
+| `OPENROUTER_API_KEY` | (required) | OpenRouter API key (or AWS creds for Bedrock models) |
+
+### Setting environment variables
+
+**For local runs** (`python -m nd.triage`, `pytest`, `./test-local.sh`):
+
+Create a `.env.local` file in the repo root and source it before running, or use `./test-local.sh` which loads it automatically:
+
+```bash
+# .env.local
+OPENROUTER_API_KEY=sk-or-...
+ND_CURRENT_USER=your-username
+ND_ASSIGNED_USERNAMES=alice,bob
+KATA_SERVER=https://kata.example.com
+GITHUB_TOKEN=ghp_...
+```
+
+**For Docker Compose** (`docker compose up`):
+
+Both the `triage` and `worker-*` services load `.env.local` via `env_file:`. Add any required vars there:
+
+```bash
+# .env.local
+ND_CURRENT_USER=your-username
+ND_ASSIGNED_USERNAMES=alice,bob
+KATA_SERVER=https://kata.example.com
+# AWS creds if using Bedrock models
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_SESSION_TOKEN=...
+```
+
+After editing `.env.local`, recreate the container so it picks up the new values:
+
+```bash
+docker compose up -d --force-recreate triage
+docker compose up -d --force-recreate worker-1 worker-2
+```
+
+Verify a var made it into the container:
+
+```bash
+docker compose exec triage printenv ND_ASSIGNED_USERNAMES
+```
+
+> **Precedence note:** Variables listed under `environment:` in `docker-compose.yml` take precedence over `env_file`. If a var is interpolated like `- FOO=${FOO}` and your shell doesn't export `FOO`, it resolves to an empty string and overrides `.env.local`. To avoid surprises, define the var only in `.env.local` (not also in `environment:`), or `export` it in the shell before running compose.
 
 ## Architecture
 
