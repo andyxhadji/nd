@@ -1,10 +1,10 @@
-# Auto-Andy AgentField Architecture
+# nd AgentField Architecture
 
-Design spec for rebuilding auto-andy as a set of autonomous AgentField agents.
+Design spec for rebuilding nd as a set of autonomous AgentField agents.
 
 ## Overview
 
-Auto-andy currently exists as a Claude Code plugin with three declarative skills (triage, address, post-comments). This design rebuilds it as a set of AgentField agents that run as autonomous daemons, integrating with middleman (PR/MR sync), kata (task tracking), and roborev (code review).
+nd currently exists as a Claude Code plugin with three declarative skills (triage, address, post-comments). This design rebuilds it as a set of AgentField agents that run as autonomous daemons, integrating with middleman (PR/MR sync), kata (task tracking), and roborev (code review).
 
 ### Goals
 
@@ -67,7 +67,7 @@ Poll middleman for new MR comments since last run, classify each as actionable o
 
 ```python
 app = Agent(
-    node_id="auto-andy-triage",
+    node_id="nd-triage",
     version="1.0.0",
     agentfield_server=os.getenv("AGENTFIELD_URL", "http://localhost:8080"),
     ai_config=AIConfig(
@@ -211,7 +211,7 @@ class TaskCreationResult(BaseModel):
    - **Dedupe Key:** `{dedupe_key}`
    - **Category:** {classification.category}
    ```
-5. Create task: `kata create "{title}" --body "{body}" --project {repo_name} --label from-mr --label auto-andy --idempotency-key "{dedupe_key}"`
+5. Create task: `kata create "{title}" --body "{body}" --project {repo_name} --label from-mr --label nd --idempotency-key "{dedupe_key}"`
 6. Return task_id
 
 ### State Management
@@ -237,7 +237,7 @@ Claim tasks from kata, analyze complexity, make code changes, run roborev, draft
 
 ```python
 app = Agent(
-    node_id="auto-andy-worker",
+    node_id="nd-worker",
     version="1.0.0",
     agentfield_server=os.getenv("AGENTFIELD_URL", "http://localhost:8080"),
     ai_config=AIConfig(
@@ -268,7 +268,7 @@ class ClaimResult(BaseModel):
 ```
 
 **Flow:**
-1. Query kata for available tasks: `kata ready --label auto-andy --unowned --json`
+1. Query kata for available tasks: `kata ready --label nd --unowned --json`
 2. If no tasks available, return `claimed=False`
 3. Claim first available task: `kata assign {task_id} {worker_instance_id}`
 4. Call `process_task` with task details
@@ -625,7 +625,7 @@ class FinalizeInput(BaseModel):
 | Label | Meaning |
 |-------|---------|
 | `from-mr` | Task originated from MR comment |
-| `auto-andy` | Task is for auto-andy processing |
+| `nd` | Task is for nd processing |
 | `in-progress` | Worker has claimed and is processing |
 | `needs-spec` | Low confidence, spec created, awaiting review |
 | `addressed` | Code changes made, awaiting response approval |
@@ -691,8 +691,8 @@ services:
       - DATABASE_URL=sqlite:///data/agentfield.db
 
   triage:
-    image: auto-andy:latest
-    command: python -m auto_andy.triage
+    image: nd:latest
+    command: python -m nd.triage
     environment:
       - AGENTFIELD_URL=http://agentfield:8080
       - MIDDLEMAN_URL=http://host.docker.internal:8091
@@ -700,8 +700,8 @@ services:
       - agentfield
 
   worker-1:
-    image: auto-andy:latest
-    command: python -m auto_andy.worker
+    image: nd:latest
+    command: python -m nd.worker
     environment:
       - AGENTFIELD_URL=http://agentfield:8080
       - AGENT_INSTANCE_ID=worker-1
@@ -709,8 +709,8 @@ services:
       - agentfield
 
   worker-2:
-    image: auto-andy:latest
-    command: python -m auto_andy.worker
+    image: nd:latest
+    command: python -m nd.worker
     environment:
       - AGENTFIELD_URL=http://agentfield:8080
       - AGENT_INSTANCE_ID=worker-2
@@ -747,7 +747,7 @@ Each agent logs to stdout with structured JSON:
 {
   "timestamp": "2026-05-27T10:30:00Z",
   "level": "info",
-  "agent": "auto-andy-worker",
+  "agent": "nd-worker",
   "instance": "worker-1",
   "execution_id": "exec-abc123",
   "reasoner": "process_task",
@@ -761,12 +761,12 @@ Each agent logs to stdout with structured JSON:
 
 Expose Prometheus metrics at `/metrics`:
 
-- `auto_andy_tasks_created_total` - Counter of tasks created by triage
-- `auto_andy_tasks_processed_total` - Counter of tasks processed by workers
-- `auto_andy_tasks_by_status` - Gauge by status (completed, failed, paused)
-- `auto_andy_processing_duration_seconds` - Histogram of task processing time
-- `auto_andy_roborev_iterations` - Histogram of roborev iteration counts
-- `auto_andy_pause_duration_seconds` - Histogram of time spent awaiting approval
+- `nd_tasks_created_total` - Counter of tasks created by triage
+- `nd_tasks_processed_total` - Counter of tasks processed by workers
+- `nd_tasks_by_status` - Gauge by status (completed, failed, paused)
+- `nd_processing_duration_seconds` - Histogram of task processing time
+- `nd_roborev_iterations` - Histogram of roborev iteration counts
+- `nd_pause_duration_seconds` - Histogram of time spent awaiting approval
 
 ## Security Considerations
 
