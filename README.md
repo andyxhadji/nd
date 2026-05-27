@@ -98,6 +98,31 @@ docker compose exec triage printenv ND_ASSIGNED_USERNAMES
 
 > **Precedence note:** Variables listed under `environment:` in `docker-compose.yml` take precedence over `env_file`. If a var is interpolated like `- FOO=${FOO}` and your shell doesn't export `FOO`, it resolves to an empty string and overrides `.env.local`. To avoid surprises, define the var only in `.env.local` (not also in `environment:`), or `export` it in the shell before running compose.
 
+### Worker workspaces
+
+The worker prepares a fresh git worktree for every claimed task, backed by
+a shared bare cache. The on-disk layout under `WORKSPACE_ROOT` (default
+`/var/nd`) is:
+
+```
+/var/nd/
+├── repos/<host>/<owner>/<repo>.git/   # bare cache, fetched once per task
+└── work/<task-slug>/                  # per-task worktree
+```
+
+Behavior:
+
+- **MR tasks** check out the MR's `head_branch` directly.
+- **Issue tasks** create `nd/issue-<short_id>` off the repo's default
+  branch (resolved from `origin/HEAD`).
+- On successful completion the worker removes the worktree; on failure or
+  pause it is left in place for inspection (toggle with
+  `WORKSPACE_KEEP_ON_FAILURE`).
+
+By default `/var/nd` is ephemeral — each container restart loses both the
+bare cache and any leftover worktrees. To persist the cache, mount a
+docker volume at `/var/nd` (or whatever you set `WORKSPACE_ROOT` to).
+
 ### Kata daemon for Docker
 
 Compose runs kata's daemon as its own service (`kata-daemon`) listening on `127.0.0.1:7878`. The agent services (`triage`, `worker-1`, `worker-2`) all use `network_mode: "service:kata-daemon"` so they share that container's network namespace and can reach the daemon on loopback — required because kata refuses to start on a non-loopback TCP listener (see `internal/daemon/auth.go` `checkAuthStartup`).
@@ -187,7 +212,8 @@ nd/
 │   ├── __init__.py
 │   ├── middleman.py            # Middleman API client
 │   ├── kata.py                 # Kata CLI wrapper
-│   └── platform.py             # GitHub/GitLab API posting
+│   ├── platform.py             # GitHub/GitLab API posting
+│   └── workspace.py            # Bare git cache + per-task worktrees
 ├── triage/
 │   ├── __init__.py
 │   ├── agent.py                # Triage agent definition

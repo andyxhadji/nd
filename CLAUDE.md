@@ -20,12 +20,14 @@ nd/
 ├── clients/
 │   ├── middleman.py     # MR comments + assigned issues
 │   ├── kata.py          # Task creation, claim, label, comment, close
-│   └── platform.py      # GitHub/GitLab posting
+│   ├── platform.py      # GitHub/GitLab posting
+│   └── workspace.py     # Bare git cache + per-task worktrees
 ├── triage/agent.py      # Reasoners: poll_comments, classify_actionable,
 │                        #            create_task, poll_issues, create_issue_task
-└── worker/agent.py      # Reasoners: claim_task, process_task, analyze_task,
-                         #            plan_changes, execute_changes, run_roborev,
-                         #            draft_response, post_response, finalize_task
+└── worker/agent.py      # Reasoners: claim_task, prepare_workspace, process_task,
+                         #            analyze_task, plan_changes, execute_changes,
+                         #            run_roborev, draft_response, post_response,
+                         #            finalize_task, cleanup_workspace
 tests/
 ├── unit/                # Fast, isolated — required to pass in CI
 └── functional/          # Integration tests, need API keys
