@@ -40,6 +40,28 @@ def _patch_kata_subprocess(monkeypatch, *, returncode=0, stdout=b"", stderr=b"")
     return captured
 
 
+def _patch_kata_subprocess_sequence(monkeypatch, responses):
+    """Patch asyncio.create_subprocess_exec to return queued (rc, stdout) tuples.
+
+    Used by tests that exercise multi-call flows like KataClient.ready, which
+    first lists projects and then runs `kata ready --project <name>` once per
+    project. Each subprocess call pops the next response; once exhausted the
+    last response is reused.
+
+    Returns a dict with key ``cmds`` (list of captured argv tuples).
+    """
+    queue = list(responses)
+    captured: dict = {"cmds": []}
+
+    async def fake_exec(*cmd, stdout=None, stderr=None, env=None):
+        captured["cmds"].append(cmd)
+        rc, out = queue[0] if len(queue) == 1 else queue.pop(0)
+        return _FakeProc(rc, stdout=out, stderr=b"")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+    return captured
+
+
 class TestMiddlemanClient:
     def test_parse_comment(self):
         raw = {
@@ -224,6 +246,9 @@ class TestKataClient:
         # Mirrors kata's actual issue JSON shape (see internal/api responses):
         # uid is the canonical identifier, project_name/labels/owner may be
         # absent in some response paths (e.g. search results omit labels).
+        # When both project_name and short_id are present, KataTask.id is the
+        # qualified ref (project#short_id) — required for downstream kata
+        # commands that need a project-scoped reference.
         raw = {
             "id": 42,
             "uid": "01KSNQYBPY6R0CB7KGH9MDA4CN",
@@ -236,9 +261,24 @@ class TestKataClient:
             "owner": None,
         }
         task = KataTask.from_dict(raw)
-        assert task.id == "01KSNQYBPY6R0CB7KGH9MDA4CN"
+        assert task.id == "testrepo#a4cn"
         assert task.project == "testrepo"
         assert "nd" in task.labels
+
+    def test_parse_task_falls_back_to_uid_when_no_short_id(self):
+        # Search results sometimes omit short_id; fall back to uid.
+        raw = {"uid": "01KSNQYBPY6R0CB7KGH9MDA4CN", "project_name": "p", "title": "t"}
+        task = KataTask.from_dict(raw)
+        assert task.id == "01KSNQYBPY6R0CB7KGH9MDA4CN"
+        assert task.project == "p"
+
+    def test_parse_task_uses_explicit_project_arg(self):
+        # `kata ready --project P --json` returns issues that don't embed
+        # project_name, so callers thread the project name through.
+        raw = {"short_id": "a4cn", "title": "t"}
+        task = KataTask.from_dict(raw, project="testrepo")
+        assert task.id == "testrepo#a4cn"
+        assert task.project == "testrepo"
 
     def test_build_task_body(self):
         body = KataClient.build_task_body(
@@ -362,8 +402,11 @@ class TestKataClientAsync:
 
     @pytest.mark.asyncio
     async def test_create_passes_labels_and_returns_id(self, monkeypatch):
-        # kata's actual create response wraps the issue: top-level "id" is
-        # not present; we read issue.uid (or issue.short_id as fallback).
+        # kata's actual create response wraps the issue and does not embed
+        # project_name on the row. We return a qualified ref by joining the
+        # project we just passed to --project with the returned short_id, so
+        # downstream commands (assign/label/comment/close) can resolve the
+        # ref without a project context.
         stdout = json.dumps(
             {
                 "kata_api_version": 1,
@@ -385,7 +428,7 @@ class TestKataClientAsync:
             labels=["a", "b"],
             idempotency_key="key1",
         )
-        assert task_id == "new-task"
+        assert task_id == "p#abcd"
         cmd = list(captured["cmd"])
         assert "--label" in cmd
         # Two --label entries for two labels
@@ -409,30 +452,87 @@ class TestKataClientAsync:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_ready_returns_tasks(self, monkeypatch):
-        captured = _patch_kata_subprocess(
+    async def test_ready_iterates_projects_and_returns_qualified_refs(self, monkeypatch):
+        # `kata ready` is project-scoped; KataClient.ready first lists
+        # projects then runs `kata ready --project <name>` per project.
+        # Per-project responses use key "issues" (not "tasks") and rows do
+        # not embed project_name, so the project is threaded through and
+        # each task.id is the qualified ref `<project>#<short_id>`.
+        projects_payload = json.dumps(
+            {
+                "kata_api_version": 1,
+                "projects": [{"name": "alpha"}, {"name": "beta"}],
+            }
+        ).encode()
+        alpha_ready = json.dumps(
+            {"kata_api_version": 1, "issues": [{"short_id": "a4cn", "title": "A"}]}
+        ).encode()
+        beta_ready = json.dumps(
+            {"kata_api_version": 1, "issues": [{"short_id": "7by6", "title": "B"}]}
+        ).encode()
+        captured = _patch_kata_subprocess_sequence(
             monkeypatch,
-            returncode=0,
-            stdout=b'{"tasks": [{"id": "r1", "project": "p", "title": "Ready"}]}',
+            [
+                (0, projects_payload),
+                (0, alpha_ready),
+                (0, beta_ready),
+            ],
         )
         tasks = await KataClient().ready(label="nd", unowned=True)
-        assert [t.id for t in tasks] == ["r1"]
-        assert "--unowned" in captured["cmd"]
+        assert sorted(t.id for t in tasks) == ["alpha#a4cn", "beta#7by6"]
+        # Three subprocess calls: projects list + per-project ready
+        assert len(captured["cmds"]) == 3
+        # --unowned threads through to each per-project ready call
+        assert all("--unowned" in cmd for cmd in captured["cmds"][1:])
+        # Each per-project ready command is scoped via --project
+        assert ("--project", "alpha") == (
+            captured["cmds"][1][captured["cmds"][1].index("--project")],
+            captured["cmds"][1][captured["cmds"][1].index("--project") + 1],
+        )
 
     @pytest.mark.asyncio
     async def test_ready_omits_unowned_when_false(self, monkeypatch):
-        captured = _patch_kata_subprocess(monkeypatch, returncode=0, stdout=b'{"tasks": []}')
+        projects_payload = json.dumps({"kata_api_version": 1, "projects": [{"name": "p"}]}).encode()
+        empty_ready = json.dumps({"kata_api_version": 1, "issues": []}).encode()
+        captured = _patch_kata_subprocess_sequence(
+            monkeypatch, [(0, projects_payload), (0, empty_ready)]
+        )
         await KataClient().ready(label="nd", unowned=False)
-        assert "--unowned" not in captured["cmd"]
+        # The per-project ready call must not include --unowned
+        assert "--unowned" not in captured["cmds"][1]
 
     @pytest.mark.asyncio
-    async def test_ready_returns_empty_on_failure(self, monkeypatch):
-        _patch_kata_subprocess(monkeypatch, returncode=1)
+    async def test_ready_returns_empty_when_projects_list_fails(self, monkeypatch):
+        # If we cannot enumerate projects we have nothing to query.
+        _patch_kata_subprocess_sequence(monkeypatch, [(1, b"")])
         assert await KataClient().ready(label="nd") == []
 
     @pytest.mark.asyncio
-    async def test_ready_returns_empty_on_invalid_json(self, monkeypatch):
-        _patch_kata_subprocess(monkeypatch, returncode=0, stdout=b"not-json")
+    async def test_ready_skips_projects_that_error(self, monkeypatch):
+        # A failure for one project must not abort the rest.
+        projects_payload = json.dumps(
+            {"kata_api_version": 1, "projects": [{"name": "alpha"}, {"name": "beta"}]}
+        ).encode()
+        beta_ready = json.dumps(
+            {"kata_api_version": 1, "issues": [{"short_id": "7by6", "title": "B"}]}
+        ).encode()
+        _patch_kata_subprocess_sequence(
+            monkeypatch,
+            [
+                (0, projects_payload),
+                (4, b""),  # alpha fails
+                (0, beta_ready),
+            ],
+        )
+        tasks = await KataClient().ready(label="nd")
+        assert [t.id for t in tasks] == ["beta#7by6"]
+
+    @pytest.mark.asyncio
+    async def test_ready_skips_projects_with_invalid_json(self, monkeypatch):
+        projects_payload = json.dumps(
+            {"kata_api_version": 1, "projects": [{"name": "alpha"}]}
+        ).encode()
+        _patch_kata_subprocess_sequence(monkeypatch, [(0, projects_payload), (0, b"not-json")])
         assert await KataClient().ready(label="nd") == []
 
     @pytest.mark.asyncio

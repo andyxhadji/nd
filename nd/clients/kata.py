@@ -21,19 +21,33 @@ class KataTask:
     owner: str | None
 
     @classmethod
-    def from_dict(cls, data: dict) -> "KataTask":
+    def from_dict(cls, data: dict, project: str | None = None) -> "KataTask":
         """Create from a kata issue JSON object.
 
         kata returns issues as ``{"id": int, "project_id": int, "title": ...,
         "body": ..., ...}`` with no top-level "project" name or "labels"
-        list. We coerce id to str and fall back gracefully when the optional
-        fields are absent so this works for both the search-results path
-        (which omits labels) and any future shape that includes them.
+        list. The ``id`` field on this dataclass stores a kata-resolvable
+        qualified ref of the form ``<project_name>#<short_id>`` whenever
+        possible — required because subsequent kata commands (assign, label,
+        comment, close) need a project-qualified ref when the workspace has
+        no .kata.toml/git ancestor (e.g. inside our docker container, cwd
+        ``/app``). We fall back to uid/short_id/id-as-str only when project
+        and short_id are not both present.
+
+        ``project`` (optional) overrides the project name embedded in the
+        result — useful when a list endpoint returns issues from a known
+        project but doesn't repeat the name on each row.
         """
-        issue_id = data.get("uid") or data.get("short_id") or data.get("id")
+        project_name = project or data.get("project_name") or str(data.get("project_id") or "")
+        short_id = data.get("short_id")
+        if project_name and short_id:
+            ref = f"{project_name}#{short_id}"
+        else:
+            issue_id = data.get("uid") or short_id or data.get("id")
+            ref = str(issue_id) if issue_id is not None else ""
         return cls(
-            id=str(issue_id) if issue_id is not None else "",
-            project=str(data.get("project_name") or data.get("project_id") or ""),
+            id=ref,
+            project=str(project_name),
             title=data.get("title", ""),
             body=data.get("body", ""),
             labels=data.get("labels", []),
@@ -122,26 +136,67 @@ class KataClient:
             data = json.loads(stdout)
             # kata's create response shape: {"kata_api_version": 1, "issue": {...}, ...}
             issue = data.get("issue") or {}
-            return issue.get("uid") or issue.get("short_id")
+            short_id = issue.get("short_id")
+            project_name = issue.get("project_name") or project
+            if project_name and short_id:
+                return f"{project_name}#{short_id}"
+            return issue.get("uid") or short_id
         except json.JSONDecodeError:
             logger.warning("kata create returned non-JSON stdout: %r", stdout)
             return None
 
-    async def ready(self, label: str, unowned: bool = True) -> list[KataTask]:
-        """Get tasks ready for work."""
-        args = ["ready", "--label", label, "--json"]
-        if unowned:
-            args.append("--unowned")
+    async def list_projects(self) -> list[str]:
+        """List project names known to the daemon.
 
-        returncode, stdout, stderr = await self._run(args)
+        ``kata projects list --json`` returns
+        ``{"kata_api_version": 1, "projects": [{"name": ..., ...}, ...]}``.
+        Returns an empty list on any failure.
+        """
+        returncode, stdout, _ = await self._run(["projects", "list", "--json"])
         if returncode != 0:
             return []
         try:
             data = json.loads(stdout)
-            return [KataTask.from_dict(t) for t in data.get("tasks", [])]
         except json.JSONDecodeError:
-            logger.warning("kata ready returned non-JSON stdout: %r", stdout)
+            logger.warning("kata projects list returned non-JSON stdout: %r", stdout)
             return []
+        return [p["name"] for p in data.get("projects", []) if p.get("name")]
+
+    async def ready(self, label: str, unowned: bool = True) -> list[KataTask]:
+        """Get tasks ready for work across all projects.
+
+        ``kata ready`` is a project-scoped command and refuses to run with
+        ``project_not_initialized`` when invoked from a workspace lacking a
+        ``.kata.toml`` / git ancestor (the case for our docker containers,
+        cwd ``/app``). To work around this we enumerate projects via the
+        daemon and call ``kata ready --project <name>`` once per project.
+
+        kata's ready response shape: ``{"kata_api_version": 1, "issues":
+        [{"short_id": ..., "title": ..., ...}, ...]}`` — the per-issue rows
+        do not embed a project name, so we attach it from the iteration
+        context when constructing each KataTask.
+        """
+        projects = await self.list_projects()
+        tasks: list[KataTask] = []
+        for project in projects:
+            args = ["ready", "--project", project, "--label", label, "--json"]
+            if unowned:
+                args.append("--unowned")
+            returncode, stdout, _ = await self._run(args)
+            if returncode != 0:
+                continue
+            try:
+                data = json.loads(stdout)
+            except json.JSONDecodeError:
+                logger.warning(
+                    "kata ready --project %s returned non-JSON stdout: %r",
+                    project,
+                    stdout,
+                )
+                continue
+            for issue in data.get("issues", []):
+                tasks.append(KataTask.from_dict(issue, project=project))
+        return tasks
 
     async def assign(self, task_id: str, owner: str) -> bool:
         """Assign a task to an owner."""
