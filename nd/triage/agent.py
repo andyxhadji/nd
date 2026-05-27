@@ -50,11 +50,17 @@ def create_triage_agent(
 
     @app.reasoner(tags=["entry"])
     # @on_schedule("*/5 * * * *")  # Disabled - trigger manually
-    async def poll_comments() -> dict:
+    async def poll_comments(payload: dict | None = None) -> dict:
         """
         Poll middleman for new MR comments and create tasks for actionable ones.
 
-        Runs every 5 minutes via cron trigger.
+        Runs every 5 minutes via cron trigger. The `payload` parameter accepts
+        the cron event ({expression, fired_at, timezone}) that AgentField
+        passes as a single positional argument; it is unused.
+
+        Note: parameter is intentionally NOT named `trigger` or `webhook` —
+        AgentField auto-injects those names as kwargs (agent.py:2202-2205),
+        which collides with the positional payload from cron triggers.
         """
         # Get last poll timestamp from memory
         last_poll_str = await app.memory.get("last_poll_timestamp")
