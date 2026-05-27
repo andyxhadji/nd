@@ -43,6 +43,8 @@ All configuration via environment variables:
 | `GITLAB_TOKEN` | (empty) | GitLab API token for posting responses |
 | `ND_CURRENT_USER` | (empty) | Username to filter MRs |
 | `ND_ASSIGNED_USERNAMES` | (empty) | Comma-separated usernames for `poll_issues`. If empty, `poll_issues` returns an error |
+| `WORKSPACE_ROOT` | `/var/nd` | Root directory for the worker's bare git cache (`<root>/repos/...`) and per-task worktrees (`<root>/work/...`). Ephemeral by default; mount as a docker volume to persist the cache across container restarts. |
+| `WORKSPACE_KEEP_ON_FAILURE` | `true` | When a task fails or pauses, leave the worktree on disk for human inspection. Set to `0` / `false` to also clean up failed runs. |
 | `OPENROUTER_API_KEY` | (required) | OpenRouter API key (or AWS creds for Bedrock models) |
 
 ### Setting environment variables

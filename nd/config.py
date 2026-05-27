@@ -27,6 +27,8 @@ class Config:
     current_user: str
     assigned_usernames: list[str]
     agent_port: int
+    workspace_root: str
+    workspace_keep_on_failure: bool
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -52,6 +54,9 @@ class Config:
             current_user=os.getenv("ND_CURRENT_USER", ""),
             assigned_usernames=_parse_usernames(os.getenv("ND_ASSIGNED_USERNAMES", "")),
             agent_port=int(os.getenv("AGENT_PORT", "0")),
+            workspace_root=os.getenv("WORKSPACE_ROOT", "/var/nd"),
+            workspace_keep_on_failure=os.getenv("WORKSPACE_KEEP_ON_FAILURE", "1")
+            not in ("0", "false", "False", ""),
         )
 
 
