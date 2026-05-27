@@ -185,6 +185,31 @@ def create_worker_agent(
                 error="Could not parse task body",
             ).model_dump()
 
+        # Prepare workspace: clone-or-fetch the bare cache and create a
+        # per-task git worktree. Failure here aborts before we touch the LLM.
+        is_issue = context.get("category") == "issue"
+        ws_result = await app.call(
+            f"{app.node_id}.prepare_workspace",
+            task_id=task_id,
+            project=project,
+            platform=context.get("platform", ""),
+            platform_host=context.get("platform_host", ""),
+            repo_owner=context.get("repo_owner", ""),
+            repo_name=context.get("repo_name", project),
+            head_branch=context.get("head_branch"),
+            base_branch=context.get("base_branch"),
+            is_issue=is_issue,
+            issue_short_id=task_id.split("#")[-1] if "#" in task_id else None,
+        )
+        ws = WorkspaceResult(**ws_result)
+        if not ws.prepared or ws.repo_path is None:
+            await kata.label(task_id, "needs-human")
+            return ProcessResult(
+                status="failed",
+                error=f"workspace prep failed: {ws.error}",
+            ).model_dump()
+        repo_path = ws.repo_path
+
         # Analyze task
         analysis_result = await app.call(
             f"{app.node_id}.analyze_task",
@@ -192,7 +217,7 @@ def create_worker_agent(
             comment_category=context.get("category", "request"),
             mr_title=context.get("mr_title", ""),
             head_branch=context.get("head_branch", ""),
-            repo_path=f"/tmp/{project}",
+            repo_path=repo_path,
         )
         analysis = AnalysisResult(**analysis_result)
 
@@ -205,7 +230,7 @@ def create_worker_agent(
                 task_id=task_id,
                 comment_body=context["comment_body"],
                 analysis=analysis.model_dump(),
-                repo_path=f"/tmp/{project}",
+                repo_path=repo_path,
             )
             spec = SpecDocument(**spec_result)
 
@@ -234,7 +259,7 @@ def create_worker_agent(
             f"{app.node_id}.execute_changes",
             task_id=task_id,
             comment_body=context["comment_body"],
-            repo_path=f"/tmp/{project}",
+            repo_path=repo_path,
             head_branch=context.get("head_branch", "main"),
             spec=spec.model_dump() if spec else None,
         )
@@ -250,7 +275,7 @@ def create_worker_agent(
         # Run roborev
         roborev_result = await app.call(
             f"{app.node_id}.run_roborev",
-            repo_path=f"/tmp/{project}",
+            repo_path=repo_path,
             commit_sha=execution.commit_sha or "",
             max_iterations=config.roborev_max_iterations,
         )
@@ -334,6 +359,15 @@ def create_worker_agent(
             response_posted=True,
             commit_sha=execution.commit_sha,
         )
+
+        # Clean up the worktree only on successful completion. Failed and
+        # paused tasks leave the worktree in place for human inspection.
+        if ws.bare_path is not None:
+            await app.call(
+                f"{app.node_id}.cleanup_workspace",
+                repo_path=repo_path,
+                bare_path=ws.bare_path,
+            )
 
         return ProcessResult(
             status="completed",
