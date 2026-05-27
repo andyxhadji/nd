@@ -67,6 +67,93 @@ class TestMiddlemanClient:
         client = MiddlemanClient(base_url="http://localhost:8091")
         assert client.base_url == "http://localhost:8091"
 
+    @pytest.mark.asyncio
+    async def test_get_issues_assigned_to_handles_bare_array(self):
+        """Middleman /api/v1/issues returns a bare JSON array, not {"items": [...]}."""
+        raw_issue = {
+            "id": "456",
+            "number": 123,
+            "title": "Bug report",
+            "body": "Something is broken",
+            "state": "open",
+            "author": "reporter",
+            "assignees": ["andyxhadji"],
+            "url": "https://github.com/org/repo/issues/123",
+            "created_at": "2026-05-27T10:00:00Z",
+            "updated_at": "2026-05-27T11:00:00Z",
+            "platform": "github",
+            "platform_host": "github.com",
+            "repo_owner": "org",
+            "repo_name": "repo",
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=[raw_issue])
+
+        client = MiddlemanClient(base_url="http://middleman")
+        client._client = httpx.AsyncClient(
+            base_url="http://middleman",
+            transport=httpx.MockTransport(handler),
+        )
+
+        issues = await client.get_issues_assigned_to("andyxhadji")
+        assert len(issues) == 1
+        assert issues[0].number == 123
+        assert issues[0].assignees == ["andyxhadji"]
+
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_get_issues_assigned_to_handles_wrapped_object(self):
+        """Backwards-compat: also handle {"items": [...]} shape if returned."""
+        raw_issue = {
+            "id": "456",
+            "number": 123,
+            "title": "Bug report",
+            "body": "Something is broken",
+            "state": "open",
+            "author": "reporter",
+            "assignees": ["andyxhadji"],
+            "url": "https://github.com/org/repo/issues/123",
+            "created_at": "2026-05-27T10:00:00Z",
+            "updated_at": "2026-05-27T11:00:00Z",
+            "platform": "github",
+            "platform_host": "github.com",
+            "repo_owner": "org",
+            "repo_name": "repo",
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"items": [raw_issue]})
+
+        client = MiddlemanClient(base_url="http://middleman")
+        client._client = httpx.AsyncClient(
+            base_url="http://middleman",
+            transport=httpx.MockTransport(handler),
+        )
+
+        issues = await client.get_issues_assigned_to("andyxhadji")
+        assert len(issues) == 1
+        assert issues[0].number == 123
+
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_get_issues_assigned_to_empty_array(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=[])
+
+        client = MiddlemanClient(base_url="http://middleman")
+        client._client = httpx.AsyncClient(
+            base_url="http://middleman",
+            transport=httpx.MockTransport(handler),
+        )
+
+        issues = await client.get_issues_assigned_to("andyxhadji")
+        assert issues == []
+
+        await client.close()
+
     def test_parse_issue(self):
         raw = {
             "id": "456",

@@ -159,4 +159,7 @@ class MiddlemanClient:
         response = await client.get("/api/v1/issues", params=params)
         response.raise_for_status()
 
-        return [Issue.from_dict(item) for item in response.json().get("items", [])]
+        # /api/v1/issues returns a bare JSON array; tolerate {"items": [...]} too.
+        data = response.json()
+        items = data if isinstance(data, list) else data.get("items", [])
+        return [Issue.from_dict(item) for item in items]
