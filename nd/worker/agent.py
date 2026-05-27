@@ -5,6 +5,7 @@ import os
 import re
 from datetime import datetime, timezone
 
+import httpx
 from agentfield import Agent, AIConfig, on_schedule
 from pydantic import BaseModel
 
@@ -376,10 +377,20 @@ Create a detailed spec.""",
                 commit_sha=commit_sha,
             ).model_dump()
 
-        except Exception as e:
+        except (TimeoutError, httpx.TimeoutException) as e:
             return ExecutionResult(
                 success=False,
-                error=str(e),
+                error=f"Timeout: {e}",
+            ).model_dump()
+        except httpx.HTTPError as e:
+            return ExecutionResult(
+                success=False,
+                error=f"HTTP error: {e}",
+            ).model_dump()
+        except RuntimeError as e:
+            return ExecutionResult(
+                success=False,
+                error=f"Runtime error: {e}",
             ).model_dump()
 
     @app.reasoner()
@@ -403,7 +414,10 @@ Create a detailed spec.""",
             passed = proc.returncode == 0
             findings = []
             if not passed:
-                findings = stderr.decode().split("\n")[:10]
+                # Parse stderr for findings, filtering empty lines
+                stderr_text = stderr.decode(errors="replace")
+                raw_lines = stderr_text.split("\n")
+                findings = [line.strip() for line in raw_lines if line.strip()][:10]
 
             return RoborevResult(
                 passed=passed,

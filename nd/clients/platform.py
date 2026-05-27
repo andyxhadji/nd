@@ -76,8 +76,10 @@ class PlatformClient:
         comment_id: int,
     ) -> str:
         """Build GitHub comment reply URL."""
+        owner_escaped = quote(owner, safe="")
+        repo_escaped = quote(repo, safe="")
         return (
-            f"https://api.github.com/repos/{owner}/{repo}"
+            f"https://api.github.com/repos/{owner_escaped}/{repo_escaped}"
             f"/pulls/{pr_number}/comments/{comment_id}/replies"
         )
 
@@ -108,7 +110,9 @@ class PlatformClient:
     ) -> bool:
         """Post a reply to a GitHub PR comment."""
         client = await self._get_github_client()
-        path = f"/repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies"
+        owner_escaped = quote(owner, safe="")
+        repo_escaped = quote(repo, safe="")
+        path = f"/repos/{owner_escaped}/{repo_escaped}/pulls/{pr_number}/comments/{comment_id}/replies"
         response = await client.post(path, json={"body": body})
         return response.status_code in (200, 201)
 
@@ -133,11 +137,15 @@ class PlatformClient:
                 body=body,
             )
         elif platform == "github":
+            try:
+                comment_id = int(thread_id)
+            except ValueError:
+                raise ValueError(f"Invalid GitHub thread_id (must be numeric): {thread_id}")
             return await self.post_github_reply(
                 owner=owner,
                 repo=repo,
                 pr_number=mr_number,
-                comment_id=int(thread_id),
+                comment_id=comment_id,
                 body=body,
             )
         else:
