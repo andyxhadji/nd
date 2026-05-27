@@ -1,34 +1,25 @@
 """Worker agent definition with AgentField reasoners."""
 
 import asyncio
-import os
 import re
-from datetime import datetime, timezone
 
 import httpx
-from agentfield import Agent, AIConfig, on_schedule
+from agentfield import Agent, AIConfig
 from pydantic import BaseModel
 
+from nd.clients.kata import KataClient
+from nd.clients.platform import PlatformClient
 from nd.config import config
 from nd.schemas import (
-    ClaimResult,
-    TaskDetails,
     AnalysisInput,
     AnalysisResult,
-    SpecDocument,
-    ExecutionInput,
-    ExecutionResult,
-    RoborevInput,
-    RoborevResult,
-    DraftInput,
+    ClaimResult,
     DraftResult,
-    ApprovalRequest,
-    PostInput,
-    FinalizeInput,
+    ExecutionResult,
     ProcessResult,
+    RoborevResult,
+    SpecDocument,
 )
-from nd.clients.kata import KataClient, KataTask
-from nd.clients.platform import PlatformClient
 from nd.worker.analyzer import TaskAnalyzer
 
 
@@ -53,7 +44,7 @@ def create_worker_agent(
 
     # Initialize clients
     kata = KataClient(kata_server=config.kata_server)
-    platform = PlatformClient(
+    _platform = PlatformClient(  # noqa: F841 - used in future reasoners
         github_token=config.github_token,
         gitlab_token=config.gitlab_token,
     )
@@ -86,7 +77,7 @@ def create_worker_agent(
         await kata.label(task.id, "in-progress")
 
         # Process the task
-        result = await app.call(
+        await app.call(
             f"{app.node_id}.process_task",
             task_id=task.id,
             project=task.project,
@@ -248,7 +239,7 @@ def create_worker_agent(
         final_response = approval.feedback or draft.response_text
 
         # Post response
-        post_result = await app.call(
+        await app.call(
             f"{app.node_id}.post_response",
             response_text=final_response,
             dedupe_key=context.get("dedupe_key", ""),
@@ -360,7 +351,7 @@ Create a detailed spec.""",
             goal += f"\n\nSpec:\n{spec_obj.proposed_solution}"
 
         try:
-            result = await app.harness(
+            await app.harness(
                 goal=goal,
                 provider="claude-code",
                 tools=["read", "write", "edit", "bash"],
@@ -368,7 +359,7 @@ Create a detailed spec.""",
             )
 
             # Parse harness result for files changed
-            files_changed = []
+            files_changed: list[str] = []
             commit_sha = None
 
             return ExecutionResult(
@@ -407,8 +398,10 @@ Create a detailed spec.""",
         """Run roborev-refine for code quality validation."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                "roborev", "refine",
-                "--max-iterations", str(max_iterations),
+                "roborev",
+                "refine",
+                "--max-iterations",
+                str(max_iterations),
                 "--wait",
                 cwd=repo_path,
                 stdout=asyncio.subprocess.PIPE,

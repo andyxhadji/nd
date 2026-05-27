@@ -1,7 +1,8 @@
 """Platform API client for posting responses to GitHub/GitLab."""
 
-import httpx
 from urllib.parse import quote
+
+import httpx
 
 
 class PlatformClient:
@@ -139,8 +140,10 @@ class PlatformClient:
         elif platform == "github":
             try:
                 comment_id = int(thread_id)
-            except ValueError:
-                raise ValueError(f"Invalid GitHub thread_id (must be numeric): {thread_id}")
+            except ValueError as err:
+                raise ValueError(
+                    f"Invalid GitHub thread_id (must be numeric): {thread_id}"
+                ) from err
             return await self.post_github_reply(
                 owner=owner,
                 repo=repo,

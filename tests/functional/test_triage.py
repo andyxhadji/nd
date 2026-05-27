@@ -1,8 +1,9 @@
 """Functional tests for triage agent."""
 
 import pytest
-from nd.triage.classifier import CommentClassifier
+
 from nd.schemas import CommentInput
+from nd.triage.classifier import CommentClassifier
 
 
 @pytest.mark.functional

@@ -1,24 +1,22 @@
 """Triage agent definition with AgentField reasoners."""
 
-import asyncio
-import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from agentfield import Agent, AIConfig, on_schedule
+from agentfield import Agent, AIConfig
 from pydantic import BaseModel
 
+from nd.clients.kata import KataClient
+from nd.clients.middleman import Issue, MiddlemanClient
 from nd.config import config
 from nd.schemas import (
-    CommentInput,
     ClassificationResult,
-    TaskInput,
-    TaskCreationResult,
-    PollResult,
-    IssueTaskInput,
+    CommentInput,
     IssuePollResult,
+    IssueTaskInput,
+    PollResult,
+    TaskCreationResult,
+    TaskInput,
 )
-from nd.clients.middleman import MiddlemanClient, MRComment, Issue
-from nd.clients.kata import KataClient
 from nd.triage.classifier import CommentClassifier
 
 
@@ -64,9 +62,7 @@ def create_triage_agent(
             last_poll = datetime.fromisoformat(last_poll_str)
         else:
             # Default to 24 hours ago on first run
-            last_poll = datetime.now(timezone.utc).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            last_poll = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
         # Fetch comments
         try:
@@ -138,7 +134,7 @@ def create_triage_agent(
         # Update last poll timestamp
         await app.memory.set(
             "last_poll_timestamp",
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(UTC).isoformat(),
         )
 
         return PollResult(
@@ -200,9 +196,10 @@ Respond with:
         return ClassificationResult(
             actionable=llm_result.actionable,
             reason=llm_result.reason,
-            category=llm_result.category if llm_result.category in (
-                "question", "request", "feedback", "acknowledgment", "bot", "other"
-            ) else "other",
+            category=llm_result.category
+            if llm_result.category
+            in ("question", "request", "feedback", "acknowledgment", "bot", "other")
+            else "other",
             confident=llm_result.confident,
         ).model_dump()
 

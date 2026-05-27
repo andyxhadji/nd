@@ -1,8 +1,9 @@
 """Functional test fixtures."""
 
 import os
-import pytest
+
 import httpx
+import pytest
 from agentfield import AIConfig
 
 

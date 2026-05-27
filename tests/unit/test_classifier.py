@@ -2,8 +2,9 @@
 """Unit tests for comment classifier."""
 
 import pytest
-from nd.triage.classifier import CommentClassifier
+
 from nd.schemas import CommentInput
+from nd.triage.classifier import CommentClassifier
 
 
 class TestCommentClassifier:

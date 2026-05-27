@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import shlex
 from dataclasses import dataclass
 
 
@@ -79,9 +78,12 @@ class KataClient:
         args = [
             "create",
             title,
-            "--body", body,
-            "--project", project,
-            "--idempotency-key", idempotency_key,
+            "--body",
+            body,
+            "--project",
+            project,
+            "--idempotency-key",
+            idempotency_key,
             "--json",
         ]
         for label in labels:

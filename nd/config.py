@@ -33,19 +33,17 @@ class Config:
         return cls(
             agentfield_url=os.getenv("AGENTFIELD_URL", "http://localhost:8080"),
             middleman_url=os.getenv("MIDDLEMAN_URL", "http://localhost:8091"),
-            middleman_db=os.path.expanduser(
-                os.getenv("MIDDLEMAN_DB", "~/.middleman/middleman.db")
-            ),
+            middleman_db=os.path.expanduser(os.getenv("MIDDLEMAN_DB", "~/.middleman/middleman.db")),
             kata_server=os.getenv("KATA_SERVER", ""),
             confidence_threshold=int(os.getenv("CONFIDENCE_THRESHOLD", "70")),
             roborev_max_iterations=int(os.getenv("ROBOREV_MAX_ITERATIONS", "3")),
             triage_model=os.getenv(
                 "TRIAGE_MODEL",
-                os.getenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "anthropic/claude-sonnet-4-20250514")
+                os.getenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "anthropic/claude-sonnet-4-20250514"),
             ),
             worker_model=os.getenv(
                 "WORKER_MODEL",
-                os.getenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "anthropic/claude-sonnet-4-20250514")
+                os.getenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "anthropic/claude-sonnet-4-20250514"),
             ),
             agent_instance_id=os.getenv("AGENT_INSTANCE_ID", "worker-1"),
             github_token=os.getenv("GITHUB_TOKEN", ""),

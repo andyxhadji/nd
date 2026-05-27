@@ -2,9 +2,9 @@
 """Unit tests for client modules."""
 
 import pytest
-from datetime import datetime, timezone
-from nd.clients.middleman import MiddlemanClient, MRComment, Issue
+
 from nd.clients.kata import KataClient, KataTask
+from nd.clients.middleman import Issue, MiddlemanClient, MRComment
 from nd.clients.platform import PlatformClient
 
 

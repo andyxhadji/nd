@@ -1,8 +1,8 @@
 """Task complexity analysis logic."""
 
 import re
-from nd.schemas import AnalysisInput, AnalysisResult
 
+from nd.schemas import AnalysisInput, AnalysisResult
 
 # Complexity indicators
 TRIVIAL_PATTERNS = [
@@ -91,9 +91,9 @@ class TaskAnalyzer:
         matches = FILE_PATH_PATTERN.findall(comment)
         # Filter out common false positives
         return [
-            m for m in matches
-            if not m.startswith("http")
-            and not m.endswith((".com", ".org", ".io"))
+            m
+            for m in matches
+            if not m.startswith("http") and not m.endswith((".com", ".org", ".io"))
         ]
 
     def _estimate_confidence(

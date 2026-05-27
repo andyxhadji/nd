@@ -2,8 +2,9 @@
 """Unit tests for task analyzer."""
 
 import pytest
-from nd.worker.analyzer import TaskAnalyzer
+
 from nd.schemas import AnalysisInput
+from nd.worker.analyzer import TaskAnalyzer
 
 
 class TestTaskAnalyzer:

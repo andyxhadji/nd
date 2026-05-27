@@ -1,8 +1,8 @@
 """Comment classification logic."""
 
 import re
-from nd.schemas import CommentInput, ClassificationResult
 
+from nd.schemas import ClassificationResult, CommentInput
 
 # Known bot patterns
 BOT_PATTERNS = [
@@ -73,9 +73,7 @@ class CommentClassifier:
                 return True
         return False
 
-    def classify_deterministic(
-        self, comment: CommentInput
-    ) -> ClassificationResult | None:
+    def classify_deterministic(self, comment: CommentInput) -> ClassificationResult | None:
         """
         Attempt deterministic classification.
 
@@ -106,7 +104,19 @@ class CommentClassifier:
             body_lower = comment.body.lower()
             if any(p in body_lower for p in ["nit:", "suggestion:"]):
                 category = "feedback"
-            elif any(p in body_lower for p in ["can you", "could you", "please", "fix", "change", "update", "add", "remove"]):
+            elif any(
+                p in body_lower
+                for p in [
+                    "can you",
+                    "could you",
+                    "please",
+                    "fix",
+                    "change",
+                    "update",
+                    "add",
+                    "remove",
+                ]
+            ):
                 category = "request"
             elif "?" in comment.body:
                 category = "question"

@@ -1,8 +1,9 @@
 """Functional tests for worker agent."""
 
 import pytest
-from nd.worker.analyzer import TaskAnalyzer
+
 from nd.schemas import AnalysisInput
+from nd.worker.analyzer import TaskAnalyzer
 
 
 @pytest.mark.functional
