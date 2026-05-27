@@ -8,12 +8,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Copy source first (needed for install)
 COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
-
-# Copy source
 COPY nd/ nd/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir .
+
+# Copy tests (optional, for testing in container)
 COPY tests/ tests/
 
 # Default command (override in compose)
