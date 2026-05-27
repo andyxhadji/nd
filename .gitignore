@@ -24,3 +24,6 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Local scripts with secrets
+test-local.sh
