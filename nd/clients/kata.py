@@ -165,3 +165,30 @@ class KataClient:
 - **Dedupe Key:** `{dedupe_key}`
 - **Category:** {category}
 """
+
+    @staticmethod
+    def build_issue_task_body(
+        issue_url: str,
+        issue_title: str,
+        issue_number: int,
+        platform: str,
+        platform_host: str,
+        repo_owner: str,
+        repo_name: str,
+        issue_author: str,
+        issue_body: str,
+        assignees: list[str],
+    ) -> str:
+        """Build structured task body markdown for an issue."""
+        assignees_str = ", ".join(assignees) if assignees else "None"
+        return f"""## Issue Context
+- **Issue:** [{repo_owner}/{repo_name}#{issue_number}]({issue_url})
+- **Title:** {issue_title}
+- **Platform:** {platform} ({platform_host})
+- **Assignees:** {assignees_str}
+
+## Issue Description
+**Author:** {issue_author}
+
+{issue_body}
+"""

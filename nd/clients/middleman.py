@@ -50,6 +50,52 @@ class MRComment:
         )
 
 
+@dataclass
+class Issue:
+    """An issue from middleman."""
+
+    id: str
+    number: int
+    title: str
+    body: str
+    state: str
+    author: str
+    assignees: list[str]
+    url: str
+    created_at: datetime
+    updated_at: datetime
+    platform: str
+    platform_host: str
+    repo_owner: str
+    repo_name: str
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Issue":
+        """Create from API response dict."""
+        created_at = data["created_at"]
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        updated_at = data["updated_at"]
+        if isinstance(updated_at, str):
+            updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        return cls(
+            id=str(data["id"]),
+            number=int(data["number"]),
+            title=data["title"],
+            body=data.get("body", ""),
+            state=data["state"],
+            author=data["author"],
+            assignees=data.get("assignees", []),
+            url=data["url"],
+            created_at=created_at,
+            updated_at=updated_at,
+            platform=data["platform"],
+            platform_host=data["platform_host"],
+            repo_owner=data["repo_owner"],
+            repo_name=data["repo_name"],
+        )
+
+
 class MiddlemanClient:
     """Client for middleman REST API."""
 
@@ -103,3 +149,15 @@ class MiddlemanClient:
         if items:
             return MRComment.from_dict(items[0])
         return None
+
+    async def get_issues_assigned_to(self, username: str) -> list[Issue]:
+        """Fetch open issues assigned to the given username."""
+        client = await self._get_client()
+        params = {
+            "state": "open",
+            "assignee": username,
+        }
+        response = await client.get("/api/v1/issues", params=params)
+        response.raise_for_status()
+
+        return [Issue.from_dict(item) for item in response.json().get("items", [])]

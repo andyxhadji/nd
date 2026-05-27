@@ -14,8 +14,10 @@ from nd.schemas import (
     TaskInput,
     TaskCreationResult,
     PollResult,
+    IssueTaskInput,
+    IssuePollResult,
 )
-from nd.clients.middleman import MiddlemanClient, MRComment
+from nd.clients.middleman import MiddlemanClient, MRComment, Issue
 from nd.clients.kata import KataClient
 from nd.triage.classifier import CommentClassifier
 
@@ -256,6 +258,132 @@ Respond with:
             project=repo_name,
             labels=["from-mr", "nd"],
             idempotency_key=comment_dedupe_key,
+        )
+
+        if task_id:
+            return TaskCreationResult(created=True, task_id=task_id).model_dump()
+        else:
+            return TaskCreationResult(
+                created=False,
+                skipped_reason="kata create failed",
+            ).model_dump()
+
+    @app.reasoner(tags=["entry"])
+    async def poll_issues() -> dict:
+        """
+        Poll middleman for open issues assigned to configured usernames
+        and create tasks for each.
+        """
+        if not config.assigned_usernames:
+            return IssuePollResult(
+                issues_found=0,
+                tasks_created=0,
+                skipped=0,
+                errors=["No assigned_usernames configured"],
+            ).model_dump()
+
+        all_issues: list[Issue] = []
+        errors: list[str] = []
+
+        # Fetch issues for each configured username
+        for username in config.assigned_usernames:
+            try:
+                issues = await middleman.get_issues_assigned_to(username)
+                all_issues.extend(issues)
+            except Exception as e:
+                errors.append(f"Middleman error for {username}: {e}")
+
+        # Deduplicate by issue URL (same issue may be assigned to multiple users)
+        seen_urls: set[str] = set()
+        unique_issues: list[Issue] = []
+        for issue in all_issues:
+            if issue.url not in seen_urls:
+                seen_urls.add(issue.url)
+                unique_issues.append(issue)
+
+        # Create tasks for each issue
+        tasks_created = 0
+        skipped = 0
+
+        for issue in unique_issues:
+            task_input = IssueTaskInput(
+                issue_number=issue.number,
+                issue_title=issue.title,
+                issue_body=issue.body,
+                issue_url=issue.url,
+                issue_author=issue.author,
+                assignees=issue.assignees,
+                platform=issue.platform,
+                platform_host=issue.platform_host,
+                repo_owner=issue.repo_owner,
+                repo_name=issue.repo_name,
+            )
+
+            result = await app.call(
+                f"{app.node_id}.create_issue_task",
+                **task_input.model_dump(),
+            )
+            result = TaskCreationResult(**result)
+
+            if result.created:
+                tasks_created += 1
+            else:
+                skipped += 1
+
+        return IssuePollResult(
+            issues_found=len(unique_issues),
+            tasks_created=tasks_created,
+            skipped=skipped,
+            errors=errors,
+        ).model_dump()
+
+    @app.reasoner()
+    async def create_issue_task(
+        issue_number: int,
+        issue_title: str,
+        issue_body: str,
+        issue_url: str,
+        issue_author: str,
+        assignees: list[str],
+        platform: str,
+        platform_host: str,
+        repo_owner: str,
+        repo_name: str,
+    ) -> dict:
+        """Create a kata task for an issue."""
+        # Use issue URL as idempotency key
+        idempotency_key = f"issue:{issue_url}"
+
+        # Check for duplicate
+        existing = await kata.search(repo_name, idempotency_key)
+        if existing:
+            return TaskCreationResult(
+                created=False,
+                skipped_reason="duplicate",
+            ).model_dump()
+
+        # Build task
+        title = issue_title[:80]
+        body = KataClient.build_issue_task_body(
+            issue_url=issue_url,
+            issue_title=issue_title,
+            issue_number=issue_number,
+            platform=platform,
+            platform_host=platform_host,
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            issue_author=issue_author,
+            issue_body=issue_body,
+            assignees=assignees,
+        )
+
+        # Create task
+        task_id = await kata.create(
+            title=title,
+            body=body,
+            project=repo_name,
+            labels=["from-issue", "nd"],
+            idempotency_key=idempotency_key,
         )
 
         if task_id:

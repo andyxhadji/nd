@@ -3,7 +3,7 @@
 
 import pytest
 from datetime import datetime, timezone
-from nd.clients.middleman import MiddlemanClient, MRComment
+from nd.clients.middleman import MiddlemanClient, MRComment, Issue
 from nd.clients.kata import KataClient, KataTask
 from nd.clients.platform import PlatformClient
 
@@ -35,6 +35,29 @@ class TestMiddlemanClient:
     async def test_client_initialization(self):
         client = MiddlemanClient(base_url="http://localhost:8091")
         assert client.base_url == "http://localhost:8091"
+
+    def test_parse_issue(self):
+        raw = {
+            "id": "456",
+            "number": 123,
+            "title": "Bug report",
+            "body": "Something is broken",
+            "state": "open",
+            "author": "reporter",
+            "assignees": ["user1", "user2"],
+            "url": "https://github.com/org/repo/issues/123",
+            "created_at": "2026-05-27T10:00:00Z",
+            "updated_at": "2026-05-27T11:00:00Z",
+            "platform": "github",
+            "platform_host": "github.com",
+            "repo_owner": "org",
+            "repo_name": "repo",
+        }
+        issue = Issue.from_dict(raw)
+        assert issue.number == 123
+        assert issue.title == "Bug report"
+        assert issue.assignees == ["user1", "user2"]
+        assert issue.platform == "github"
 
 
 class TestKataClient:
@@ -71,6 +94,24 @@ class TestKataClient:
         assert "## MR Context" in body
         assert "org/repo!42" in body
         assert "Please fix this" in body
+
+    def test_build_issue_task_body(self):
+        body = KataClient.build_issue_task_body(
+            issue_url="https://github.com/org/repo/issues/123",
+            issue_title="Bug report",
+            issue_number=123,
+            platform="github",
+            platform_host="github.com",
+            repo_owner="org",
+            repo_name="repo",
+            issue_author="reporter",
+            issue_body="Something is broken",
+            assignees=["user1", "user2"],
+        )
+        assert "## Issue Context" in body
+        assert "org/repo#123" in body
+        assert "Something is broken" in body
+        assert "user1, user2" in body
 
 
 class TestPlatformClient:

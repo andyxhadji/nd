@@ -4,6 +4,11 @@ import os
 from dataclasses import dataclass
 
 
+def _parse_usernames(value: str) -> list[str]:
+    """Parse comma-separated usernames into a list."""
+    return [u.strip() for u in value.split(",") if u.strip()]
+
+
 @dataclass(frozen=True)
 class Config:
     """Application configuration from environment."""
@@ -20,6 +25,7 @@ class Config:
     github_token: str
     gitlab_token: str
     current_user: str
+    assigned_usernames: list[str]
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -45,6 +51,7 @@ class Config:
             github_token=os.getenv("GITHUB_TOKEN", ""),
             gitlab_token=os.getenv("GITLAB_TOKEN", ""),
             current_user=os.getenv("ND_CURRENT_USER", ""),
+            assigned_usernames=_parse_usernames(os.getenv("ND_ASSIGNED_USERNAMES", "")),
         )
 
 

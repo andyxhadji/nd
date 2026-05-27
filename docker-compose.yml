@@ -23,6 +23,7 @@ services:
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
       - TRIAGE_MODEL=${TRIAGE_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/fa9v3zo70aog}
       - ND_CURRENT_USER=${ND_CURRENT_USER}
+      - ND_ASSIGNED_USERNAMES=${ND_ASSIGNED_USERNAMES:-}
     depends_on:
       - agentfield
     restart: unless-stopped

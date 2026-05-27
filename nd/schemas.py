@@ -62,6 +62,30 @@ class PollResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class IssueTaskInput(BaseModel):
+    """Input for creating a kata task from an issue."""
+
+    issue_number: int
+    issue_title: str
+    issue_body: str
+    issue_url: str
+    issue_author: str
+    assignees: list[str]
+    platform: str
+    platform_host: str
+    repo_owner: str
+    repo_name: str
+
+
+class IssuePollResult(BaseModel):
+    """Result of polling for issues."""
+
+    issues_found: int
+    tasks_created: int
+    skipped: int
+    errors: list[str] = Field(default_factory=list)
+
+
 # ============================================================================
 # Worker Agent Schemas
 # ============================================================================
