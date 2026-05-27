@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from nd.clients.kata import KataClient
 from nd.clients.platform import PlatformClient
+from nd.clients.workspace import Workspace, WorkspaceClient
 from nd.config import config
 from nd.schemas import (
     AnalysisInput,
@@ -19,6 +20,7 @@ from nd.schemas import (
     ProcessResult,
     RoborevResult,
     SpecDocument,
+    WorkspaceResult,
 )
 from nd.worker.analyzer import TaskAnalyzer
 
@@ -45,6 +47,11 @@ def create_worker_agent(
     # Initialize clients
     kata = KataClient(kata_server=config.kata_server)
     _platform = PlatformClient(  # noqa: F841 - used in future reasoners
+        github_token=config.github_token,
+        gitlab_token=config.gitlab_token,
+    )
+    workspace = WorkspaceClient(
+        root=config.workspace_root,
         github_token=config.github_token,
         gitlab_token=config.gitlab_token,
     )
@@ -103,6 +110,63 @@ def create_worker_agent(
             task_id=task.id,
             project=task.project,
         ).model_dump()
+
+    @app.reasoner()
+    async def prepare_workspace(
+        task_id: str,
+        project: str,
+        platform: str,
+        platform_host: str,
+        repo_owner: str,
+        repo_name: str,
+        head_branch: str | None = None,
+        base_branch: str | None = None,
+        is_issue: bool = False,
+        issue_short_id: str | None = None,
+    ) -> dict:
+        """Clone-or-fetch the bare cache and create a per-task git worktree.
+
+        For MR tasks, ``head_branch`` must be set; the worker checks it out
+        directly. For issue tasks pass ``is_issue=True`` (and optionally
+        ``issue_short_id``); the worker creates ``nd/issue-<short_id>`` off
+        the resolved base branch.
+        """
+        task_slug = f"{project}-{issue_short_id or task_id}".replace("#", "-")
+        ws = await workspace.prepare(
+            platform=platform,
+            platform_host=platform_host,
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            head_branch=None if is_issue else head_branch,
+            base_branch=base_branch,
+            task_slug=task_slug,
+            issue_short_id=issue_short_id if is_issue else None,
+        )
+        if ws is None:
+            return WorkspaceResult(
+                prepared=False,
+                error="workspace prep failed",
+            ).model_dump()
+        return WorkspaceResult(
+            prepared=True,
+            repo_path=ws.repo_path,
+            branch=ws.branch,
+            base_branch=ws.base_branch,
+            bare_path=ws.bare_path,
+        ).model_dump()
+
+    @app.reasoner()
+    async def cleanup_workspace(repo_path: str, bare_path: str) -> dict:
+        """Best-effort worktree teardown after task completion."""
+        await workspace.cleanup(
+            Workspace(
+                repo_path=repo_path,
+                branch="",
+                base_branch="",
+                bare_path=bare_path,
+            ),
+        )
+        return {"cleaned": True}
 
     @app.reasoner()
     async def process_task(
