@@ -30,6 +30,8 @@ services:
   worker-1:
     build: .
     command: python -m nd.worker
+    env_file:
+      - .env.local
     environment:
       - AGENTFIELD_URL=http://agentfield:8080
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
@@ -38,8 +40,6 @@ services:
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
       - WORKER_MODEL=${WORKER_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/fa9v3zo70aog}
       - AGENT_INSTANCE_ID=worker-1
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - GITLAB_TOKEN=${GITLAB_TOKEN}
       - KATA_SERVER=${KATA_SERVER:-}
       - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}
       - ROBOREV_MAX_ITERATIONS=${ROBOREV_MAX_ITERATIONS:-3}
@@ -50,6 +50,8 @@ services:
   worker-2:
     build: .
     command: python -m nd.worker
+    env_file:
+      - .env.local
     environment:
       - AGENTFIELD_URL=http://agentfield:8080
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
@@ -58,8 +60,6 @@ services:
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
       - WORKER_MODEL=${WORKER_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/fa9v3zo70aog}
       - AGENT_INSTANCE_ID=worker-2
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - GITLAB_TOKEN=${GITLAB_TOKEN}
       - KATA_SERVER=${KATA_SERVER:-}
       - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}
       - ROBOREV_MAX_ITERATIONS=${ROBOREV_MAX_ITERATIONS:-3}
