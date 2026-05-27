@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  agentfield:
+    image: agentfield/control-plane:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - agentfield-data:/data
+    environment:
+      - DATABASE_URL=sqlite:///data/agentfield.db
+      - LOG_LEVEL=info
+
+  triage:
+    build: .
+    command: python -m nd.triage
+    environment:
+      - AGENTFIELD_URL=http://agentfield:8080
+      - MIDDLEMAN_URL=http://host.docker.internal:8091
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - TRIAGE_MODEL=${TRIAGE_MODEL:-openrouter/anthropic/claude-sonnet-4}
+      - ND_CURRENT_USER=${ND_CURRENT_USER}
+    depends_on:
+      - agentfield
+    restart: unless-stopped
+
+  worker-1:
+    build: .
+    command: python -m nd.worker
+    environment:
+      - AGENTFIELD_URL=http://agentfield:8080
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - WORKER_MODEL=${WORKER_MODEL:-openrouter/anthropic/claude-sonnet-4}
+      - AGENT_INSTANCE_ID=worker-1
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITLAB_TOKEN=${GITLAB_TOKEN}
+    depends_on:
+      - agentfield
+    restart: unless-stopped
+
+  worker-2:
+    build: .
+    command: python -m nd.worker
+    environment:
+      - AGENTFIELD_URL=http://agentfield:8080
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - WORKER_MODEL=${WORKER_MODEL:-openrouter/anthropic/claude-sonnet-4}
+      - AGENT_INSTANCE_ID=worker-2
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITLAB_TOKEN=${GITLAB_TOKEN}
+    depends_on:
+      - agentfield
+    restart: unless-stopped
+
+volumes:
+  agentfield-data:

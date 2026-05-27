@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  agentfield:
+    image: agentfield/control-plane:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=sqlite:///data/agentfield-test.db
+      - LOG_LEVEL=debug
+
+  triage:
+    build: .
+    command: python -m nd.triage
+    environment:
+      - AGENTFIELD_URL=http://agentfield:8080
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - TRIAGE_MODEL=openrouter/google/gemini-2.5-flash
+      - TEST_MODE=true
+    depends_on:
+      - agentfield
+
+  worker:
+    build: .
+    command: python -m nd.worker
+    environment:
+      - AGENTFIELD_URL=http://agentfield:8080
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - WORKER_MODEL=openrouter/google/gemini-2.5-flash
+      - AGENT_INSTANCE_ID=worker-test
+      - TEST_MODE=true
+    depends_on:
+      - agentfield
+
+  test-runner:
+    build: .
+    command: pytest tests/ -v --tb=short
+    environment:
+      - AGENTFIELD_SERVER=http://agentfield:8080
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=openrouter/google/gemini-2.5-flash-lite
+    depends_on:
+      - triage
+      - worker
