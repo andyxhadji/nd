@@ -57,7 +57,7 @@ def create_triage_agent(
         Runs every 5 minutes via cron trigger.
         """
         # Get last poll timestamp from memory
-        last_poll_str = await app.memory.get("last_poll_timestamp", scope="agent")
+        last_poll_str = await app.memory.get("last_poll_timestamp")
         if last_poll_str:
             last_poll = datetime.fromisoformat(last_poll_str)
         else:
@@ -137,7 +137,6 @@ def create_triage_agent(
         await app.memory.set(
             "last_poll_timestamp",
             datetime.now(timezone.utc).isoformat(),
-            scope="agent",
         )
 
         return PollResult(
