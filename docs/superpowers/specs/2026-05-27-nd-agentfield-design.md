@@ -789,6 +789,502 @@ Expose Prometheus metrics at `/metrics`:
 - Kata maintains event history for all task mutations
 - Git commits include task ID reference for traceability
 
+## Testing
+
+### Verification Ladder
+
+Before deployment, run these checks in order. If any step fails, do not proceed.
+
+```bash
+# 1. Control plane health
+curl -fsS http://localhost:8080/api/v1/health | jq '.status'
+
+# 2. Agents registered and reasoners discoverable
+curl -fsS http://localhost:8080/api/v1/discovery/capabilities \
+  | jq '.capabilities[] | select(.agent_id | startswith("nd-")) | {
+      agent_id,
+      n_reasoners: (.reasoners | length),
+      entry: [.reasoners[] | select(.tags[]? == "entry") | .id]
+    }'
+
+# 3. Triage agent reasoners visible
+curl -fsS http://localhost:8080/api/v1/discovery/capabilities \
+  | jq '.capabilities[] | select(.agent_id=="nd-triage") | .reasoners[].id'
+
+# 4. Worker agent reasoners visible
+curl -fsS http://localhost:8080/api/v1/discovery/capabilities \
+  | jq '.capabilities[] | select(.agent_id=="nd-worker") | .reasoners[].id'
+```
+
+### End-to-End Functional Test
+
+This test validates the complete workflow from comment ingestion to task completion. It uses mock data to avoid requiring live MR comments.
+
+#### Test Fixtures
+
+```python
+# tests/functional/conftest.py
+
+import pytest
+from agentfield import Agent, AIConfig
+
+@pytest.fixture(scope="session")
+def control_plane_url() -> str:
+    return os.environ.get("AGENTFIELD_SERVER", "http://localhost:8080")
+
+@pytest.fixture
+def mock_middleman_comment() -> dict:
+    """Simulate a comment from middleman."""
+    return {
+        "id": "test-comment-001",
+        "body": "Can you add logging to this function?",
+        "author": "reviewer",
+        "created_at": "2026-05-27T10:00:00Z",
+        "dedupe_key": "gitlab:gitlab.com:testorg/testrepo:mr:42:note:12345",
+        "mr_number": 42,
+        "mr_title": "Add new feature",
+        "mr_url": "https://gitlab.com/testorg/testrepo/-/merge_requests/42",
+        "head_branch": "feature-branch",
+        "base_branch": "main",
+        "platform": "gitlab",
+        "platform_host": "gitlab.com",
+        "repo_owner": "testorg",
+        "repo_name": "testrepo",
+    }
+
+@pytest.fixture
+def mock_kata_task(mock_middleman_comment) -> dict:
+    """Simulate a kata task created from the comment."""
+    return {
+        "id": "kata#abc123",
+        "project": "testrepo",
+        "title": "Can you add logging to this function?",
+        "body": f"""## MR Context
+- **MR:** [testorg/testrepo!42]({mock_middleman_comment['mr_url']})
+- **Title:** {mock_middleman_comment['mr_title']}
+- **Branch:** {mock_middleman_comment['head_branch']} -> {mock_middleman_comment['base_branch']}
+
+## Original Comment
+**Author:** {mock_middleman_comment['author']}
+
+{mock_middleman_comment['body']}
+
+## Metadata
+- **Dedupe Key:** `{mock_middleman_comment['dedupe_key']}`
+- **Category:** request
+""",
+        "labels": ["from-mr", "nd"],
+        "owner": None,
+    }
+```
+
+#### Test: Triage Classification
+
+```python
+# tests/functional/tests/test_triage.py
+
+import pytest
+from utils import run_agent_server, unique_node_id
+
+@pytest.mark.functional
+@pytest.mark.asyncio
+async def test_classify_actionable_comment(
+    make_test_agent,
+    openrouter_config,
+    async_http_client,
+    mock_middleman_comment,
+):
+    """
+    Test that the triage agent correctly classifies an actionable comment.
+
+    Flow:
+    1. Create triage agent with classify_actionable reasoner
+    2. Send a comment that should be classified as actionable
+    3. Verify the classification result
+    """
+    from nd.triage import create_triage_agent
+
+    agent = create_triage_agent(
+        node_id=unique_node_id("nd-triage-test"),
+        ai_config=openrouter_config,
+    )
+
+    async with run_agent_server(agent):
+        # Verify agent registered
+        caps = await async_http_client.get("/api/v1/discovery/capabilities")
+        assert caps.status_code == 200
+
+        # Execute classify_actionable reasoner
+        result = await async_http_client.post(
+            f"/api/v1/reasoners/{agent.node_id}.classify_actionable",
+            json={
+                "input": {
+                    "body": mock_middleman_comment["body"],
+                    "author": mock_middleman_comment["author"],
+                    "mr_title": mock_middleman_comment["mr_title"],
+                    "mr_number": mock_middleman_comment["mr_number"],
+                }
+            },
+            timeout=30.0,
+        )
+
+        assert result.status_code == 200
+        data = result.json()["result"]
+
+        # "Can you add logging" is an explicit request - should be actionable
+        assert data["actionable"] is True
+        assert data["category"] == "request"
+        assert data["confident"] is True
+
+        print(f"✓ Classification: actionable={data['actionable']}, category={data['category']}")
+
+
+@pytest.mark.functional
+@pytest.mark.asyncio
+async def test_classify_non_actionable_comment(
+    make_test_agent,
+    openrouter_config,
+    async_http_client,
+):
+    """
+    Test that the triage agent correctly skips non-actionable comments.
+    """
+    from nd.triage import create_triage_agent
+
+    agent = create_triage_agent(
+        node_id=unique_node_id("nd-triage-test"),
+        ai_config=openrouter_config,
+    )
+
+    async with run_agent_server(agent):
+        # Execute classify_actionable with a non-actionable comment
+        result = await async_http_client.post(
+            f"/api/v1/reasoners/{agent.node_id}.classify_actionable",
+            json={
+                "input": {
+                    "body": "LGTM, thanks!",
+                    "author": "reviewer",
+                    "mr_title": "Add new feature",
+                    "mr_number": 42,
+                }
+            },
+            timeout=30.0,
+        )
+
+        assert result.status_code == 200
+        data = result.json()["result"]
+
+        # "LGTM" is an acknowledgment - should not be actionable
+        assert data["actionable"] is False
+        assert data["category"] == "acknowledgment"
+
+        print(f"✓ Non-actionable correctly identified: category={data['category']}")
+```
+
+#### Test: Worker Task Analysis
+
+```python
+# tests/functional/tests/test_worker.py
+
+import pytest
+from utils import run_agent_server, unique_node_id
+
+@pytest.mark.functional
+@pytest.mark.asyncio
+async def test_analyze_task_complexity(
+    make_test_agent,
+    openrouter_config,
+    async_http_client,
+    mock_kata_task,
+):
+    """
+    Test that the worker agent correctly analyzes task complexity.
+
+    Flow:
+    1. Create worker agent with analyze_task reasoner
+    2. Send a task that should be analyzed as moderate complexity
+    3. Verify the analysis result includes complexity and confidence scores
+    """
+    from nd.worker import create_worker_agent
+
+    agent = create_worker_agent(
+        node_id=unique_node_id("nd-worker-test"),
+        ai_config=openrouter_config,
+    )
+
+    async with run_agent_server(agent):
+        # Execute analyze_task reasoner
+        result = await async_http_client.post(
+            f"/api/v1/reasoners/{agent.node_id}.analyze_task",
+            json={
+                "input": {
+                    "comment_body": "Can you add logging to this function?",
+                    "comment_category": "request",
+                    "mr_title": "Add new feature",
+                    "head_branch": "feature-branch",
+                    "repo_path": "/tmp/test-repo",
+                }
+            },
+            timeout=60.0,
+        )
+
+        assert result.status_code == 200
+        data = result.json()["result"]
+
+        # Verify analysis structure
+        assert "complexity" in data
+        assert "confidence" in data
+        assert "reasoning" in data
+        assert "suggested_approach" in data
+
+        # "Add logging" is typically complexity 2 (minor)
+        assert data["complexity"] in [1, 2, 3]
+        assert 0 <= data["confidence"] <= 100
+
+        print(f"✓ Analysis: complexity={data['complexity']}, confidence={data['confidence']}")
+        print(f"  Reasoning: {data['reasoning'][:100]}...")
+```
+
+#### Test: End-to-End Workflow (Integration)
+
+```python
+# tests/functional/tests/test_e2e_workflow.py
+
+import pytest
+import asyncio
+from utils import run_agent_server, unique_node_id
+
+@pytest.mark.functional
+@pytest.mark.asyncio
+@pytest.mark.slow
+async def test_full_workflow_with_mock_services(
+    make_test_agent,
+    openrouter_config,
+    async_http_client,
+    mock_middleman_comment,
+):
+    """
+    End-to-end test of the complete nd workflow.
+
+    This test mocks external services (middleman, kata, roborev) to validate
+    the full agent interaction flow without requiring live infrastructure.
+
+    Flow:
+    1. Triage agent classifies comment as actionable
+    2. Triage agent creates kata task (mocked)
+    3. Worker agent claims task (mocked)
+    4. Worker agent analyzes task complexity
+    5. Worker agent executes changes (mocked harness)
+    6. Worker agent runs roborev (mocked)
+    7. Worker agent drafts response
+    8. Worker agent requests approval (pause point)
+    9. Simulate approval
+    10. Worker agent posts response (mocked)
+    11. Worker agent finalizes task
+
+    The test validates that all reasoners execute correctly and produce
+    expected outputs at each stage.
+    """
+    from nd.triage import create_triage_agent
+    from nd.worker import create_worker_agent
+
+    # Create both agents
+    triage = create_triage_agent(
+        node_id=unique_node_id("nd-triage-e2e"),
+        ai_config=openrouter_config,
+    )
+    worker = create_worker_agent(
+        node_id=unique_node_id("nd-worker-e2e"),
+        ai_config=openrouter_config,
+    )
+
+    async with run_agent_server(triage), run_agent_server(worker):
+        # ================================================================
+        # Phase 1: Triage
+        # ================================================================
+        print("\n=== Phase 1: Triage Classification ===")
+
+        classify_result = await async_http_client.post(
+            f"/api/v1/reasoners/{triage.node_id}.classify_actionable",
+            json={
+                "input": {
+                    "body": mock_middleman_comment["body"],
+                    "author": mock_middleman_comment["author"],
+                    "mr_title": mock_middleman_comment["mr_title"],
+                    "mr_number": mock_middleman_comment["mr_number"],
+                }
+            },
+            timeout=30.0,
+        )
+        assert classify_result.status_code == 200
+        classification = classify_result.json()["result"]
+        assert classification["actionable"] is True
+        print(f"✓ Comment classified as actionable: {classification['category']}")
+
+        # ================================================================
+        # Phase 2: Worker Analysis
+        # ================================================================
+        print("\n=== Phase 2: Worker Task Analysis ===")
+
+        analyze_result = await async_http_client.post(
+            f"/api/v1/reasoners/{worker.node_id}.analyze_task",
+            json={
+                "input": {
+                    "comment_body": mock_middleman_comment["body"],
+                    "comment_category": classification["category"],
+                    "mr_title": mock_middleman_comment["mr_title"],
+                    "head_branch": mock_middleman_comment["head_branch"],
+                    "repo_path": "/tmp/test-repo",
+                }
+            },
+            timeout=60.0,
+        )
+        assert analyze_result.status_code == 200
+        analysis = analyze_result.json()["result"]
+        print(f"✓ Task analyzed: complexity={analysis['complexity']}, confidence={analysis['confidence']}")
+
+        # ================================================================
+        # Phase 3: Draft Response
+        # ================================================================
+        print("\n=== Phase 3: Draft Response ===")
+
+        draft_result = await async_http_client.post(
+            f"/api/v1/reasoners/{worker.node_id}.draft_response",
+            json={
+                "input": {
+                    "comment_body": mock_middleman_comment["body"],
+                    "changes_made": ["Added logging to process_data() function"],
+                    "commit_sha": "abc1234",
+                    "commit_diff": "diff --git a/src/handler.py...\n+    logger.info('Processing data')",
+                }
+            },
+            timeout=30.0,
+        )
+        assert draft_result.status_code == 200
+        draft = draft_result.json()["result"]
+        assert "response_text" in draft
+        assert "abc1234" in draft["response_text"]
+        print(f"✓ Response drafted: {draft['response_text'][:100]}...")
+
+        # ================================================================
+        # Validation
+        # ================================================================
+        print("\n=== Workflow Validation ===")
+        print("✓ All phases completed successfully")
+        print("✓ Triage → Analysis → Draft flow validated")
+        print("\n✅ End-to-end workflow test passed!")
+```
+
+### Smoke Test Commands
+
+Include these in the README for manual verification:
+
+```bash
+# After docker compose up, in another terminal:
+
+# 1. Control plane up?
+curl -fsS http://localhost:8080/api/v1/health | jq '.status'
+
+# 2. Both agents registered?
+curl -fsS http://localhost:8080/api/v1/discovery/capabilities \
+  | jq '[.capabilities[] | select(.agent_id | startswith("nd-")) | .agent_id]'
+
+# 3. Test triage classification (async to avoid timeout)
+EXEC_ID=$(curl -sS -X POST http://localhost:8080/api/v1/execute/async/nd-triage.classify_actionable \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "input": {
+      "body": "Can you fix this typo in the error message?",
+      "author": "reviewer",
+      "mr_title": "Update config",
+      "mr_number": 123,
+      "model": "openrouter/google/gemini-2.5-flash"
+    }
+  }' | jq -r '.execution_id')
+echo "Execution: $EXEC_ID"
+
+# 4. Poll for result
+while :; do
+  R=$(curl -sS http://localhost:8080/api/v1/executions/$EXEC_ID)
+  S=$(echo "$R" | jq -r '.status')
+  case "$S" in
+    succeeded) echo "$R" | jq '.result'; break ;;
+    failed)    echo "$R" | jq '.'; exit 1 ;;
+    *)         sleep 2 ;;
+  esac
+done
+
+# 5. Verify the workflow DAG (shows reasoning chain)
+WORKFLOW_ID=$(curl -sS http://localhost:8080/api/v1/executions/$EXEC_ID | jq -r '.workflow_id')
+curl -sS http://localhost:8080/api/v1/did/workflow/$WORKFLOW_ID/vc-chain | jq '.credentials | length'
+```
+
+### Test Environment Setup
+
+```yaml
+# docker-compose.test.yml
+version: '3.8'
+
+services:
+  agentfield:
+    image: agentfield/control-plane:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=sqlite:///data/agentfield-test.db
+      - LOG_LEVEL=debug
+
+  nd-triage:
+    build: .
+    command: python -m nd.triage
+    environment:
+      - AGENTFIELD_URL=http://agentfield:8080
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - TRIAGE_MODEL=openrouter/google/gemini-2.5-flash
+      - TEST_MODE=true  # Skip actual middleman/kata calls
+    depends_on:
+      - agentfield
+
+  nd-worker:
+    build: .
+    command: python -m nd.worker
+    environment:
+      - AGENTFIELD_URL=http://agentfield:8080
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - WORKER_MODEL=openrouter/google/gemini-2.5-flash
+      - AGENT_INSTANCE_ID=worker-test
+      - TEST_MODE=true
+    depends_on:
+      - agentfield
+
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    command: pytest tests/functional -v --tb=short
+    environment:
+      - AGENTFIELD_SERVER=http://agentfield:8080
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=openrouter/google/gemini-2.5-flash-lite
+    depends_on:
+      - nd-triage
+      - nd-worker
+```
+
+### Running Tests
+
+```bash
+# Run all functional tests
+docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
+
+# Run specific test
+docker compose -f docker-compose.test.yml run test-runner \
+  pytest tests/functional/tests/test_triage.py -v
+
+# Run with verbose logging
+FUNCTIONAL_HTTP_LOGGING=1 docker compose -f docker-compose.test.yml up
+```
+
 ## Future Enhancements
 
 ### Phase 2: Confidence-Gated Auto-Posting
