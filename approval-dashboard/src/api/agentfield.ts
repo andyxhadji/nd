@@ -1,7 +1,8 @@
 import { AgentFieldRun, ApprovalRequest, ApprovalResponse } from './types';
 import { generateHmacSignature } from './hmac';
 
-export const AGENTFIELD_URL = 'http://localhost:8081';
+// Use relative URL - nginx will proxy /api/ to agentfield service
+export const AGENTFIELD_URL = '';
 export const WEBHOOK_SECRET = 'nd-approval-secret-dev';
 export const POLL_INTERVAL_MS = 5000;
 export const REQUEST_TIMEOUT_MS = 10000;
