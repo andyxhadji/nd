@@ -5,10 +5,10 @@
  */
 export async function generateHmacSignature(
   secret: string,
-  payload: Record<string, any>
+  payload: string
 ): Promise<string> {
   const encoder = new TextEncoder();
-  const data = encoder.encode(JSON.stringify(payload));
+  const data = encoder.encode(payload);
   const keyData = encoder.encode(secret);
 
   // Import secret as HMAC key

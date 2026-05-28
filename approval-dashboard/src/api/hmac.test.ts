@@ -8,7 +8,7 @@ export async function testHmacSignature() {
     decision: 'approved',
   };
 
-  const signature = await generateHmacSignature(secret, payload);
+  const signature = await generateHmacSignature(secret, JSON.stringify(payload));
   console.log('Signature:', signature);
 
   // Expected format: sha256={64 hex chars}

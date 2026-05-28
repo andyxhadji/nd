@@ -133,7 +133,9 @@ export async function sendApproval(
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const signature = await generateHmacSignature(WEBHOOK_SECRET, request);
+    // Stringify the request body once to ensure HMAC is computed over the exact same string
+    const requestBody = JSON.stringify(request);
+    const signature = await generateHmacSignature(WEBHOOK_SECRET, requestBody);
 
     const response = await fetch(
       `${AGENTFIELD_URL}/api/v1/webhooks/approval-response`,
@@ -143,7 +145,7 @@ export async function sendApproval(
           'Content-Type': 'application/json',
           'X-Hub-Signature-256': signature,
         },
-        body: JSON.stringify(request),
+        body: requestBody,
         signal: controller.signal,
       }
     );
