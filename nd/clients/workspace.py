@@ -1,7 +1,6 @@
 """Workspace preparation: bare git cache + per-task worktrees."""
 
 import asyncio
-import errno
 import logging
 import os
 import re
@@ -82,12 +81,14 @@ def _askpass_env(
     os.chmod(tmpdir, 0o700)
     helper_path = os.path.join(tmpdir, "askpass.sh")
     # The helper distinguishes "Username for ..." vs "Password for ..." by
-    # the prompt git passes as $1.
+    # the prompt git passes as $1. Match both explicitly and refuse any
+    # other prompt rather than silently leaking the token.
     script = (
         "#!/bin/sh\n"
         'case "$1" in\n'
         '  Username*) printf "%s" "$GIT_ASKPASS_USERNAME" ;;\n'
-        '  *) printf "%s" "$GIT_ASKPASS_TOKEN" ;;\n'
+        '  Password*) printf "%s" "$GIT_ASKPASS_TOKEN" ;;\n'
+        "  *) exit 1 ;;\n"
         "esac\n"
     )
     with open(helper_path, "w") as f:
@@ -189,13 +190,12 @@ class WorkspaceClient:
         try:
             os.mkdir(worktree_path)
         except FileExistsError:
+            # ``FileExistsError`` is the canonical (Py3) exception for
+            # ``mkdir`` on an existing path and is itself an ``OSError``
+            # subclass with ``errno == EEXIST``, so we don't need a
+            # separate ``OSError``/``errno`` branch here.
             logger.warning("worktree path %s already exists; failing prep", worktree_path)
             return None
-        except OSError as exc:
-            if exc.errno == errno.EEXIST:
-                logger.warning("worktree path %s already exists; failing prep", worktree_path)
-                return None
-            raise
         # ``git worktree add`` refuses to create into an existing directory,
         # so remove our placeholder now that we've reserved the slot.
         os.rmdir(worktree_path)
