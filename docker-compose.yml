@@ -8,6 +8,7 @@ services:
     environment:
       - DATABASE_URL=sqlite:///data/agentfield.db
       - LOG_LEVEL=info
+      - AGENTFIELD_APPROVAL_WEBHOOK_SECRET=nd-approval-secret-dev
 
   # Kata daemon runs in its own container with a docker-managed DB volume.
   # Tasks created here are NOT visible to the host's `kata` CLI; they live in
