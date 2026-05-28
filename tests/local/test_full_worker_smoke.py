@@ -277,3 +277,46 @@ def test_full_worker_creates_real_pull_request() -> None:
     assert pull["html_url"].startswith(f"https://github.com/{owner}/{repo}/pull/")
     assert pull["head"]["ref"] == branch
     assert {file["filename"] for file in files} == {"CHANGELOG.md"}
+
+    # Verify the worker execution didn't fail (but may be paused for approval)
+    worker_logs = _compose(
+        ["logs", "worker-1", "--tail=500"],
+        env=env,
+        check=False,
+    )
+    # Check for execution failures
+    if "reasoner.failed" in worker_logs.stdout:
+        # Look for failures related to this specific task
+        failed_lines = [
+            line for line in worker_logs.stdout.splitlines() if "reasoner.failed" in line
+        ]
+        if failed_lines:
+            raise AssertionError(
+                f"Worker execution failed for task {short_id}. "
+                f"Last failure: {failed_lines[-1][:300]}"
+            )
+
+    # The worker always pauses for response approval after creating the PR.
+    # Verify the task is either closed (if auto-approved somehow) or paused for approval.
+    task_status = _compose(
+        [
+            "exec",
+            "-T",
+            "kata-daemon",
+            "kata",
+            "show",
+            "--project",
+            project,
+            "--json",
+            short_id,
+        ],
+        env=env,
+    )
+    task_data = json.loads(task_status.stdout)
+    status = task_data["issue"]["status"]
+
+    # Success: PR created, task is paused for response approval
+    # (The human approval gate is part of the design - not a failure)
+    assert status in ("open", "closed"), (
+        f"task {short_id} should be open (paused for approval) or closed, got status={status}"
+    )

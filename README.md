@@ -50,11 +50,41 @@ All configuration via environment variables:
 
 ### Setting environment variables
 
-A starter template lives at `.env.example`. Copy it to `.env.local` (gitignored) and fill in real values before running anything that depends on it (including `docker compose up`, which mounts `.env.local` via `env_file:` and will fail if the file is missing):
+A starter template lives at `.env.example`. Copy it to `.env.local` (gitignored) and fill in real values before running anything that depends on it:
 
 ```bash
 cp .env.example .env.local
+# Edit .env.local and add required credentials
 ```
+
+**Required variables in `.env.local`:**
+- `GITHUB_TOKEN` or `GITLAB_TOKEN` - for posting responses to MRs/PRs
+- `ND_CURRENT_USER` - your username for filtering MR comments
+- `ND_ASSIGNED_USERNAMES` - comma-separated list for issue polling
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` - for Bedrock models
+
+**Important:** The docker-compose.yml has been configured to load AWS credentials and `ND_CURRENT_USER` from `.env.local` via `env_file`. Do NOT add these variables to the `environment:` section in docker-compose.yml, as shell variable interpolation will override the `.env.local` values with empty strings.
+
+#### AWS Credentials for Bedrock
+
+When using Bedrock models, you need AWS credentials with `bedrock:InvokeModel` permissions. The required AWS role depends on your organization's IAM configuration:
+
+- **`horizon-okta` role** (recommended): Has Bedrock permissions. Credentials are typically available via `aws configure export-credentials` when logged in through AWS SSO/Okta.
+- **`horizon` role** (from saml2aws): May have an explicit deny policy for Bedrock. If you see errors like `is not authorized to perform: bedrock:InvokeModel ... with an explicit deny in an identity-based policy`, you're using the wrong role.
+
+To get working credentials:
+
+```bash
+# If using AWS SSO/Okta (horizon-okta role):
+aws configure export-credentials --format env-no-export
+
+# Copy the output to .env.local:
+# AWS_ACCESS_KEY_ID=ASIAZR676OGX...
+# AWS_SECRET_ACCESS_KEY=...
+# AWS_SESSION_TOKEN=...
+```
+
+If `aws configure export-credentials` doesn't work, check `~/.aws/credentials` or contact your AWS administrator to ensure your role has `bedrock:InvokeModel` permissions for the inference profile ARN configured in `WORKER_MODEL`.
 
 **For local runs** (`python -m nd.triage`, `pytest`, `./test-local.sh`):
 
@@ -179,14 +209,43 @@ The worker agent pauses for human approval at three points:
 ## Docker Deployment
 
 ```bash
-# Development with all services
-docker compose up
+# First time setup
+cp .env.example .env.local
+# Edit .env.local with your credentials
 
-# Test environment
-docker compose -f docker-compose.test.yml up
+# Start all services
+docker compose up -d
 
-# Run tests in container
-docker compose -f docker-compose.test.yml run test-runner
+# Check service status
+docker compose ps
+
+# View logs
+docker compose logs triage --tail=50
+docker compose logs worker-1 --tail=50
+
+# Restart services after config changes
+docker compose down
+docker compose up -d
+
+# Or recreate specific services
+docker compose up -d --force-recreate triage worker-1 worker-2
+```
+
+### Verifying the deployment
+
+```bash
+# Check agent health
+docker compose exec triage curl -sS http://localhost:8001/health
+docker compose exec worker-1 curl -sS http://localhost:8002/health
+
+# Verify environment variables loaded
+docker compose exec triage printenv | grep -E "ND_CURRENT_USER|AWS_ACCESS_KEY_ID"
+
+# Check kata daemon
+docker compose exec kata-daemon kata projects list
+
+# Test AgentField connectivity (should show "Connected to AgentField server")
+docker compose logs triage | grep -i agentfield
 ```
 
 ## Testing
@@ -238,6 +297,98 @@ tests/
 ├── unit/                       # Unit tests
 ├── functional/                 # Functional tests
 ```
+
+## Troubleshooting
+
+### Agents can't reach AgentField
+
+**Symptoms:** Logs show "AgentField server unavailable - running in degraded mode" or "Could not resolve host: agentfield"
+
+**Causes:**
+1. Port conflict preventing agentfield from binding to port 8081
+2. agentfield container not on the Docker network
+
+**Solutions:**
+```bash
+# Check for port conflicts
+lsof -i :8081
+
+# Stop conflicting containers
+docker ps -a | grep agentfield
+docker stop <container-id>
+
+# Recreate all services
+docker compose down
+docker compose up -d
+
+# Verify agentfield network connectivity
+docker inspect fire-tortellini-agentfield-1 | grep -A 10 Networks
+docker compose exec worker-1 curl -sS http://agentfield:8080/health
+```
+
+### AWS credentials expired or wrong role
+
+**Symptoms:**
+- "The security token included in the request is expired"
+- "User: arn:aws:sts::657062785455:assumed-role/horizon/... is not authorized to perform: bedrock:InvokeModel ... with an explicit deny in an identity-based policy"
+
+**Root cause:** The `horizon` role (from saml2aws) may lack Bedrock permissions, while `horizon-okta` role (from AWS SSO) has them.
+
+**Solution:**
+```bash
+# Option 1: Use horizon-okta credentials (recommended)
+aws configure export-credentials --format env-no-export
+# Copy AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN to .env.local
+
+# Option 2: If using saml2aws, check which role has Bedrock access
+aws sts get-caller-identity  # Check current role
+# Look for "assumed-role/horizon-okta" (good) vs "assumed-role/horizon" (may be denied)
+
+# After updating .env.local, recreate workers
+docker compose up -d --force-recreate worker-1 worker-2
+
+# Verify Bedrock access works
+docker compose exec worker-1 python -c "
+import boto3, os
+client = boto3.Session(
+    aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+    aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+    aws_session_token=os.environ['AWS_SESSION_TOKEN'],
+    region_name='us-east-1'
+).client('bedrock-runtime')
+response = client.invoke_model(
+    modelId='arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr',
+    body='{\"anthropic_version\":\"bedrock-2023-05-31\",\"max_tokens\":10,\"messages\":[{\"role\":\"user\",\"content\":\"test\"}]}'
+)
+print('✓ Bedrock access verified')
+"
+```
+
+### Workers not claiming tasks
+
+**Symptoms:** `claim_task` returns `{"claimed": false}` even though tasks exist
+
+**Possible causes:**
+1. Task already owned by another worker
+2. Task doesn't have `nd` label
+3. Task is in wrong project
+
+**Debug:**
+```bash
+# Check tasks
+docker compose exec kata-daemon kata list --project <project-name>
+
+# Check task labels and owner
+docker compose exec kata-daemon kata list --project <project-name> --json | python -m json.tool
+```
+
+### Task body format errors
+
+**Symptoms:** Worker fails with "Could not parse task body" or "platform_host must be non-empty"
+
+**Cause:** Task body doesn't match expected format from `KataClient.build_issue_task_body()`
+
+**Solution:** Use the triage agent's `create_issue_task` reasoner which formats tasks correctly, or manually format the task body to match the expected structure with headers like `## Issue Context`.
 
 ## License
 

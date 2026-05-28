@@ -651,26 +651,56 @@ Create a detailed spec.""",
     ) -> dict:
         """Generate response text based on changes made."""
 
-        class ResponseDraft(BaseModel):
-            response_text: str
-            confident: bool
-
+        # Don't use schema - the LLM double-nests the response and breaks validation
+        # Instead, get unstructured response and parse manually
         llm_result = await app.ai(
-            system="""You are drafting a response to a code review comment.
-Be concise and professional. Mention the commit SHA.
-End with an offer to make adjustments if needed.""",
-            user=f"""Original comment: {comment_body}
+            system="""You are helping draft a reply to a code review comment.
+Write a concise, professional message. Mention the commit SHA.
+Offer to make adjustments if needed.
 
-Files changed: {changes_made}
-Commit: {commit_sha}
+Return a JSON object with exactly two fields:
+- message: the reply text
+- confident: true if the changes fully address the comment, false otherwise""",
+            user=f"""The author said: {comment_body}
 
-Draft a response.""",
-            schema=ResponseDraft,
+We changed these files: {changes_made}
+In this commit: {commit_sha}
+
+Draft the reply.""",
         )
 
+        # Parse the JSON response manually to handle double-nesting
+        import json
+
+        try:
+            # Try to parse as JSON
+            if isinstance(llm_result, str):
+                data = json.loads(llm_result)
+            else:
+                # If it's already a dict/object, use it
+                data = llm_result
+
+            # Handle double-nesting: check if message field contains nested JSON
+            message = data.get("message", "")
+            confident = data.get("confident", True)
+
+            if isinstance(message, str) and message.strip().startswith("{"):
+                try:
+                    nested = json.loads(message)
+                    if isinstance(nested, dict):
+                        message = nested.get("message", message)
+                        confident = nested.get("confident", confident)
+                except (json.JSONDecodeError, TypeError):
+                    pass  # Use outer values if nested parsing fails
+
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            # Fallback: use the raw result as message
+            message = str(llm_result) if llm_result else "Changes completed as requested."
+            confident = False
+
         return DraftResult(
-            response_text=llm_result.response_text,
-            confident=llm_result.confident,
+            response_text=message,
+            confident=confident,
         ).model_dump()
 
     @app.reasoner()
