@@ -277,3 +277,40 @@ def test_full_worker_creates_real_pull_request() -> None:
     assert pull["html_url"].startswith(f"https://github.com/{owner}/{repo}/pull/")
     assert pull["head"]["ref"] == branch
     assert {file["filename"] for file in files} == {"CHANGELOG.md"}
+
+    # Verify the kata task completed successfully (not just that PR exists)
+    task_status = _compose(
+        [
+            "exec",
+            "-T",
+            "kata-daemon",
+            "kata",
+            "show",
+            "--project",
+            project,
+            "--json",
+            short_id,
+        ],
+        env=env,
+    )
+    task_data = json.loads(task_status.stdout)
+    assert task_data["issue"]["status"] == "closed", (
+        f"task {short_id} should be closed after successful PR creation, "
+        f"got status={task_data['issue']['status']}"
+    )
+
+    # Check worker logs for execution errors
+    worker_logs = _compose(
+        ["logs", "worker-1", "--tail=500"],
+        env=env,
+        check=False,
+    )
+    # Look for the specific execution that processed this task
+    if "reasoner.failed" in worker_logs.stdout and short_id in worker_logs.stdout:
+        # Extract the error message for this specific task
+        for line in worker_logs.stdout.splitlines():
+            if "reasoner.failed" in line and short_id in line:
+                raise AssertionError(
+                    f"Worker execution failed for task {short_id}. "
+                    f"Check logs for details. Error line: {line[:200]}"
+                )
