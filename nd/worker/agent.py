@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from nd.clients.kata import KataClient
 from nd.clients.platform import PlatformClient
-from nd.clients.workspace import Workspace, WorkspaceClient
+from nd.clients.workspace import WorkspaceClient
 from nd.config import config
 from nd.schemas import (
     AnalysisInput,
@@ -157,16 +157,14 @@ def create_worker_agent(
 
     @app.reasoner()
     async def cleanup_workspace(repo_path: str, bare_path: str) -> dict:
-        """Best-effort worktree teardown after task completion."""
-        await workspace.cleanup(
-            Workspace(
-                repo_path=repo_path,
-                branch="",
-                base_branch="",
-                bare_path=bare_path,
-            ),
-        )
-        return {"cleaned": True}
+        """Best-effort worktree teardown after task completion.
+
+        Returns ``{"cleaned": bool}`` reflecting whether the underlying
+        ``git worktree remove`` succeeded. ``False`` indicates we had to
+        fall back to ``rm -rf``.
+        """
+        cleaned = await workspace.cleanup(repo_path=repo_path, bare_path=bare_path)
+        return {"cleaned": cleaned}
 
     @app.reasoner()
     async def process_task(

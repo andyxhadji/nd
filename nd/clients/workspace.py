@@ -274,17 +274,22 @@ class WorkspaceClient:
             bare_path=bare_path,
         )
 
-    async def cleanup(self, workspace: Workspace) -> None:
-        """Remove the worktree. Best-effort; never raises."""
+    async def cleanup(self, repo_path: str, bare_path: str) -> bool:
+        """Remove the worktree. Best-effort; never raises.
+
+        Returns ``True`` if ``git worktree remove`` succeeded. Returns
+        ``False`` when we had to fall back to ``shutil.rmtree`` (the
+        directory is gone but git's bookkeeping may still reference it).
+        """
         rc, _, err = await self._run(
             [
                 "git",
                 "-C",
-                workspace.bare_path,
+                bare_path,
                 "worktree",
                 "remove",
                 "--force",
-                workspace.repo_path,
+                repo_path,
             ],
         )
         if rc != 0:
@@ -292,4 +297,6 @@ class WorkspaceClient:
                 "git worktree remove failed: %s; falling back to rm -rf",
                 err.strip(),
             )
-            shutil.rmtree(workspace.repo_path, ignore_errors=True)
+            shutil.rmtree(repo_path, ignore_errors=True)
+            return False
+        return True

@@ -3,7 +3,6 @@
 import pytest
 
 from nd.clients.workspace import (
-    Workspace,
     WorkspaceClient,
     _anon_clone_url,
     _askpass_env,
@@ -411,17 +410,14 @@ class TestCleanup:
     async def test_runs_worktree_remove_force(self, monkeypatch):
         captured = _patch_subprocess_sequence(monkeypatch, [(0, b"")])
         c = WorkspaceClient(root="/var/nd")
-        ws = Workspace(
-            repo_path="/var/nd/work/myproj-7by6",
-            branch="master",
-            base_branch="master",
-            bare_path="/var/nd/repos/github.com/octocat/Hello-World.git",
-        )
-        await c.cleanup(ws)
+        repo_path = "/var/nd/work/myproj-7by6"
+        bare_path = "/var/nd/repos/github.com/octocat/Hello-World.git"
+        ok = await c.cleanup(repo_path=repo_path, bare_path=bare_path)
+        assert ok is True
         cmd = captured["cmds"][0]
-        assert cmd[:3] == ("git", "-C", ws.bare_path)
+        assert cmd[:3] == ("git", "-C", bare_path)
         assert "worktree" in cmd and "remove" in cmd and "--force" in cmd
-        assert cmd[-1] == ws.repo_path
+        assert cmd[-1] == repo_path
 
     async def test_falls_back_to_rmtree_on_failure(self, monkeypatch):
         _patch_subprocess_sequence(monkeypatch, [(1, b"")])
@@ -434,11 +430,8 @@ class TestCleanup:
         monkeypatch.setattr("nd.clients.workspace.shutil.rmtree", fake_rmtree)
 
         c = WorkspaceClient(root="/var/nd")
-        ws = Workspace(
-            repo_path="/var/nd/work/myproj-7by6",
-            branch="",
-            base_branch="",
-            bare_path="/var/nd/repos/github.com/octocat/Hello-World.git",
-        )
-        await c.cleanup(ws)
-        assert called == {"path": ws.repo_path, "ignore_errors": True}
+        repo_path = "/var/nd/work/myproj-7by6"
+        bare_path = "/var/nd/repos/github.com/octocat/Hello-World.git"
+        ok = await c.cleanup(repo_path=repo_path, bare_path=bare_path)
+        assert ok is False
+        assert called == {"path": repo_path, "ignore_errors": True}

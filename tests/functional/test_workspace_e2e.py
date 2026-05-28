@@ -40,7 +40,8 @@ async def test_prepare_and_cleanup_against_hello_world():
         # Worktrees use a `.git` file (gitlink), not a `.git` directory.
         assert os.path.exists(os.path.join(ws.repo_path, ".git"))
 
-        await client.cleanup(ws)
+        ok = await client.cleanup(repo_path=ws.repo_path, bare_path=ws.bare_path)
+        assert ok is True
         assert not os.path.exists(ws.repo_path)
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
