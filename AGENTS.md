@@ -139,6 +139,30 @@ If you see "security token included in the request is expired" or "not authorize
 - Recreate workers: `docker compose up -d --force-recreate worker-1 worker-2`
 - Verify: Test Bedrock access inside worker container (see README.md troubleshooting section)
 
+### Refreshing AWS Credentials After saml2aws Login
+
+When AWS credentials expire, follow this workflow to update the docker-compose environment:
+
+```bash
+# 1. Run saml2aws login
+saml2aws login
+
+# 2. Update .env.local with fresh credentials from assumed-horizon profile
+# Extract credentials from ~/.aws/saml2aws_credentials [assumed-horizon] section:
+#   - aws_access_key_id → AWS_ACCESS_KEY_ID
+#   - aws_secret_access_key → AWS_SECRET_ACCESS_KEY
+#   - aws_session_token → AWS_SESSION_TOKEN
+
+# 3. Restart docker-compose to reload env_file
+docker-compose down
+docker-compose up -d
+
+# 4. Verify credentials loaded in worker containers
+docker exec hyper-furniture-worker-1-1 env | grep AWS_ACCESS_KEY_ID
+```
+
+**Why this is needed:** Workers load AWS credentials from `.env.local` via docker-compose's `env_file` directive. The credentials are only read at container startup, so a full restart (`down` then `up`) is required after updating `.env.local`.
+
 ### Worktree Already Exists
 If workspace prep fails with "worktree path ... already exists":
 - Clean up: `docker compose exec worker-1 rm -rf /var/nd/work/<task-name>`

@@ -72,6 +72,30 @@ ruff format --check .
 
 CI (`.github/workflows/ci.yml`) runs `ruff check`, `ruff format --check`, unit tests, and enforces ≥50% coverage. Match this locally before pushing.
 
+## Refreshing AWS Credentials
+
+When AWS credentials expire (or after running `saml2aws login`), follow this workflow to update the docker-compose environment:
+
+```bash
+# 1. Run saml2aws login
+saml2aws login
+
+# 2. Update .env.local with fresh credentials from assumed-horizon profile
+# Extract credentials from ~/.aws/saml2aws_credentials [assumed-horizon] section:
+#   - aws_access_key_id → AWS_ACCESS_KEY_ID
+#   - aws_secret_access_key → AWS_SECRET_ACCESS_KEY
+#   - aws_session_token → AWS_SESSION_TOKEN
+
+# 3. Restart docker-compose to reload env_file
+docker-compose down
+docker-compose up -d
+
+# 4. Verify credentials loaded in worker containers
+docker exec hyper-furniture-worker-1-1 env | grep AWS_ACCESS_KEY_ID
+```
+
+**Why this is needed:** Workers load AWS credentials from `.env.local` via docker-compose's `env_file` directive. The credentials are only read at container startup, so a full restart is required after updating `.env.local`.
+
 ## Running the agents
 
 ```bash

@@ -17,6 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Install roborev
+RUN curl -fsSL https://roborev.io/install.sh | bash
+
 # kata CLI from the builder stage
 COPY --from=kata-build /go/bin/kata /usr/local/bin/kata
 
