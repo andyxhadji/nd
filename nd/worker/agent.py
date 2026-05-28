@@ -668,9 +668,24 @@ Write the reply message and indicate if you're confident the changes fully addre
             schema=ResponseDraft,
         )
 
+        # Handle double-nested JSON if the LLM wraps the response
+        message = llm_result.message
+        confident = llm_result.confident
+
+        if isinstance(message, str) and message.strip().startswith("{"):
+            try:
+                import json
+                nested = json.loads(message)
+                # If LLM returned nested JSON, extract the inner values
+                if isinstance(nested, dict) and "message" in nested:
+                    message = nested["message"]
+                    confident = nested.get("confident", confident)
+            except (json.JSONDecodeError, TypeError):
+                pass  # Use original values if parsing fails
+
         return DraftResult(
-            response_text=llm_result.message,
-            confident=llm_result.confident,
+            response_text=message,
+            confident=confident,
         ).model_dump()
 
     @app.reasoner()
