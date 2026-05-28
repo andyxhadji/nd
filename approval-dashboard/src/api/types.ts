@@ -19,8 +19,8 @@ export interface PauseContext {
 
 export interface ReasonerCall {
   name: string;
-  input: Record<string, any>;
-  output: Record<string, any>;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
   timestamp: string;
   duration_ms: number;
 }
@@ -67,7 +67,6 @@ export interface RoborevContext {
   commitSha: string;
   iterations: number;
   findings: string[];
-  originalComment: string;
 }
 
 export interface ResponseContext {
@@ -75,7 +74,7 @@ export interface ResponseContext {
   filesChanged: string[];
   commitSha: string;
   originalComment: string;
-  mrUrl: string;
+  mrUrl?: string;
 }
 
 // Approval webhook types
