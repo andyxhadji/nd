@@ -2,7 +2,13 @@
 
 import pytest
 
-from nd.clients.workspace import Workspace, WorkspaceClient, _auth_clone_url
+from nd.clients.workspace import (
+    Workspace,
+    WorkspaceClient,
+    _anon_clone_url,
+    _askpass_env,
+    _check_safe_component,
+)
 
 
 class _FakeProc:
@@ -18,14 +24,16 @@ class _FakeProc:
 def _patch_subprocess_sequence(monkeypatch, responses):
     """Patch asyncio.create_subprocess_exec with queued (rc, stdout) tuples.
 
-    Returns ``captured`` with ``cmds`` (list of argv tuples in call order).
-    Once the queue is down to its last entry, subsequent calls reuse it.
+    Returns ``captured`` with ``cmds`` (list of argv tuples in call order)
+    and ``envs`` (list of env dicts that were forwarded). Once the queue is
+    down to its last entry, subsequent calls reuse it.
     """
     queue = list(responses)
-    captured: dict = {"cmds": []}
+    captured: dict = {"cmds": [], "envs": []}
 
-    async def fake_exec(*cmd, stdout=None, stderr=None, cwd=None):
+    async def fake_exec(*cmd, stdout=None, stderr=None, cwd=None, env=None):
         captured["cmds"].append(cmd)
+        captured["envs"].append(env)
         rc, out = queue[0] if len(queue) == 1 else queue.pop(0)
         return _FakeProc(rc, stdout=out, stderr=b"")
 
@@ -33,22 +41,146 @@ def _patch_subprocess_sequence(monkeypatch, responses):
     return captured
 
 
-class TestAuthCloneUrl:
-    def test_github_with_token(self):
-        url = _auth_clone_url("github", "github.com", "octocat", "Hello-World", "ghp_abc", "")
-        assert url == "https://x-access-token:ghp_abc@github.com/octocat/Hello-World.git"
+def _patch_filesystem_for_prepare(monkeypatch, *, askpass_env=None):
+    """Stub the filesystem side effects of ``prepare()``.
 
-    def test_gitlab_with_token(self):
-        url = _auth_clone_url("gitlab", "gitlab.com", "org", "repo", "", "glpat_xyz")
-        assert url == "https://oauth2:glpat_xyz@gitlab.com/org/repo.git"
+    - The atomic worktree-claim ``mkdir``/``rmdir``/``makedirs`` are
+      no-ops (we don't want real directories created during unit tests).
+    - ``_askpass_env`` is replaced with a deterministic stub by default
+      so tests don't have to manage the real tempdir / chmod / file I/O.
+      Pass ``askpass_env=({...}, "/tmp/fake")`` to override what the stub
+      returns.
+    """
+    import nd.clients.workspace as ws_mod
 
-    def test_github_without_token_falls_back_to_anonymous(self):
-        url = _auth_clone_url("github", "github.com", "octocat", "Hello-World", "", "")
+    monkeypatch.setattr(ws_mod.os, "mkdir", lambda *_a, **_k: None)
+    monkeypatch.setattr(ws_mod.os, "rmdir", lambda *_a, **_k: None)
+    monkeypatch.setattr(ws_mod.os, "makedirs", lambda *_a, **_k: None)
+
+    def _fake_askpass(platform, gh, gl):
+        if askpass_env is not None:
+            return askpass_env
+        if platform == "github" and gh:
+            return (
+                {
+                    "GIT_ASKPASS": "/tmp/fake-askpass.sh",
+                    "GIT_ASKPASS_USERNAME": "x-access-token",
+                    "GIT_ASKPASS_TOKEN": gh,
+                    "GIT_TERMINAL_PROMPT": "0",
+                },
+                None,  # No real tempdir to clean up.
+            )
+        if platform == "gitlab" and gl:
+            return (
+                {
+                    "GIT_ASKPASS": "/tmp/fake-askpass.sh",
+                    "GIT_ASKPASS_USERNAME": "oauth2",
+                    "GIT_ASKPASS_TOKEN": gl,
+                    "GIT_TERMINAL_PROMPT": "0",
+                },
+                None,
+            )
+        return ({}, None)
+
+    monkeypatch.setattr(ws_mod, "_askpass_env", _fake_askpass)
+
+
+# Backwards-compat alias for tests that don't care about askpass.
+_patch_atomic_mkdir_happy = _patch_filesystem_for_prepare
+
+
+class TestAnonCloneUrl:
+    def test_no_token_in_url(self):
+        url = _anon_clone_url("github.com", "octocat", "Hello-World")
         assert url == "https://github.com/octocat/Hello-World.git"
+        # The token must NEVER appear in the clone URL.
+        assert "x-access-token" not in url
+        assert "@" not in url
 
-    def test_gitlab_without_token_falls_back_to_anonymous(self):
-        url = _auth_clone_url("gitlab", "gitlab.com", "org", "repo", "", "")
+    def test_gitlab(self):
+        url = _anon_clone_url("gitlab.com", "org", "repo")
         assert url == "https://gitlab.com/org/repo.git"
+
+
+class TestCheckSafeComponent:
+    def test_rejects_dotdot(self):
+        with pytest.raises(ValueError):
+            _check_safe_component("..", allow_colon=False, label="owner")
+
+    def test_rejects_slash(self):
+        with pytest.raises(ValueError):
+            _check_safe_component("a/b", allow_colon=False, label="owner")
+
+    def test_rejects_backslash(self):
+        with pytest.raises(ValueError):
+            _check_safe_component("a\\b", allow_colon=False, label="owner")
+
+    def test_rejects_empty(self):
+        with pytest.raises(ValueError):
+            _check_safe_component("", allow_colon=False, label="owner")
+
+    def test_rejects_traversal_segment(self):
+        # Embedded ".." within a slash-bearing string is rejected by the
+        # slash check, but a bare ".." also gets rejected explicitly.
+        with pytest.raises(ValueError):
+            _check_safe_component(".", allow_colon=False, label="owner")
+
+    def test_accepts_normal_owner(self):
+        _check_safe_component("octocat", allow_colon=False, label="owner")
+
+    def test_accepts_normal_repo(self):
+        _check_safe_component("Hello-World.test_1", allow_colon=False, label="repo")
+
+    def test_host_allows_colon(self):
+        _check_safe_component("git.example.com:8443", allow_colon=True, label="host")
+
+    def test_host_rejects_colon_when_disallowed(self):
+        with pytest.raises(ValueError):
+            _check_safe_component("git.example.com:8443", allow_colon=False, label="repo")
+
+
+class TestAskpassEnv:
+    def test_no_token_returns_empty(self, tmp_path):
+        env, tmpdir = _askpass_env("github", "", "")
+        assert env == {}
+        assert tmpdir is None
+
+    def test_github_token_creates_helper_with_token_in_env_only(self, monkeypatch):
+        env, tmpdir = _askpass_env("github", "ghp_secret", "")
+        try:
+            assert tmpdir is not None
+            # Token only travels via env vars, NEVER in argv.
+            assert env["GIT_ASKPASS_TOKEN"] == "ghp_secret"
+            assert env["GIT_ASKPASS_USERNAME"] == "x-access-token"
+            assert env["GIT_TERMINAL_PROMPT"] == "0"
+            # The helper script exists and is executable.
+            import os
+            import stat as _stat
+
+            helper = env["GIT_ASKPASS"]
+            mode = os.stat(helper).st_mode
+            assert mode & _stat.S_IXUSR, "helper must be executable"
+            # Token must NOT appear in the helper script body itself —
+            # it must be read from the env at runtime.
+            with open(helper) as f:
+                body = f.read()
+            assert "ghp_secret" not in body
+        finally:
+            if tmpdir:
+                import shutil as _shutil
+
+                _shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_gitlab_token_uses_oauth2_username(self):
+        env, tmpdir = _askpass_env("gitlab", "", "glpat_xyz")
+        try:
+            assert env["GIT_ASKPASS_USERNAME"] == "oauth2"
+            assert env["GIT_ASKPASS_TOKEN"] == "glpat_xyz"
+        finally:
+            if tmpdir:
+                import shutil as _shutil
+
+                _shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 class TestWorkspaceClientPaths:
@@ -58,6 +190,21 @@ class TestWorkspaceClientPaths:
             c._bare_path("github.com", "octocat", "Hello-World")
             == "/var/nd/repos/github.com/octocat/Hello-World.git"
         )
+
+    def test_bare_path_rejects_traversal_owner(self):
+        c = WorkspaceClient(root="/var/nd")
+        with pytest.raises(ValueError):
+            c._bare_path("github.com", "..", "repo")
+
+    def test_bare_path_rejects_slash_in_repo(self):
+        c = WorkspaceClient(root="/var/nd")
+        with pytest.raises(ValueError):
+            c._bare_path("github.com", "owner", "../etc/passwd")
+
+    def test_bare_path_rejects_slash_in_host(self):
+        c = WorkspaceClient(root="/var/nd")
+        with pytest.raises(ValueError):
+            c._bare_path("github.com/evil", "owner", "repo")
 
     def test_worktree_path_sanitizes_unsafe_chars(self):
         c = WorkspaceClient(root="/var/nd")
@@ -76,9 +223,9 @@ class TestPrepareNoExistingCache:
                 (0, b""),  # git worktree add
             ],
         )
-        # Bare path missing, worktree path missing.
+        # Bare path missing.
         monkeypatch.setattr("os.path.exists", lambda _p: False)
-        monkeypatch.setattr("os.makedirs", lambda *_a, **_k: None)
+        _patch_atomic_mkdir_happy(monkeypatch)
 
         c = WorkspaceClient(root="/var/nd", github_token="ghp_test", gitlab_token="")
         ws = await c.prepare(
@@ -97,11 +244,20 @@ class TestPrepareNoExistingCache:
         assert ws.base_branch == "master"
         assert ws.bare_path == "/var/nd/repos/github.com/octocat/Hello-World.git"
 
-        # First call: git clone --bare <auth_url> <bare_path>
+        # First call: git clone --bare uses anonymous URL — token must NOT
+        # appear anywhere in argv.
         first = captured["cmds"][0]
         assert first[0:3] == ("git", "clone", "--bare")
-        assert first[3] == "https://x-access-token:ghp_test@github.com/octocat/Hello-World.git"
+        assert first[3] == "https://github.com/octocat/Hello-World.git"
         assert first[4] == "/var/nd/repos/github.com/octocat/Hello-World.git"
+        for arg in first:
+            assert "ghp_test" not in arg, f"token leaked into argv: {arg!r}"
+
+        # Token is conveyed via env (GIT_ASKPASS_TOKEN), not argv.
+        first_env = captured["envs"][0]
+        assert first_env is not None
+        assert first_env["GIT_ASKPASS_TOKEN"] == "ghp_test"
+        assert first_env["GIT_ASKPASS_USERNAME"] == "x-access-token"
 
         # Second call: git -C <bare> worktree add <wt> <branch>
         second = captured["cmds"][1]
@@ -121,19 +277,14 @@ class TestPrepareExistingCache:
             ],
         )
 
-        # Bare exists, worktree does not.
+        # Bare exists.
         bare = "/var/nd/repos/github.com/octocat/Hello-World.git"
-        worktree = "/var/nd/work/myproj-7by6"
 
         def fake_exists(p):
-            if p == bare:
-                return True
-            if p == worktree:
-                return False
-            return False
+            return p == bare
 
         monkeypatch.setattr("os.path.exists", fake_exists)
-        monkeypatch.setattr("os.makedirs", lambda *_a, **_k: None)
+        _patch_atomic_mkdir_happy(monkeypatch)
 
         c = WorkspaceClient(root="/var/nd", github_token="ghp_test")
         ws = await c.prepare(
@@ -152,6 +303,9 @@ class TestPrepareExistingCache:
         assert first[0:5] == ("git", "-C", bare, "fetch", "--prune")
         # No `git clone --bare` was issued.
         assert all(c[0:3] != ("git", "clone", "--bare") for c in captured["cmds"])
+        # And no token leaked into the fetch argv.
+        for arg in first:
+            assert "ghp_test" not in arg
 
 
 @pytest.mark.asyncio
@@ -166,7 +320,7 @@ class TestPrepareIssueBranch:
             ],
         )
         monkeypatch.setattr("os.path.exists", lambda _p: False)
-        monkeypatch.setattr("os.makedirs", lambda *_a, **_k: None)
+        _patch_atomic_mkdir_happy(monkeypatch)
 
         c = WorkspaceClient(root="/var/nd")
         ws = await c.prepare(
@@ -203,12 +357,16 @@ class TestPrepareWorktreeAlreadyExists:
 
         monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
 
-        worktree = "/var/nd/work/myproj-7by6"
+        import nd.clients.workspace as ws_mod
 
-        def fake_exists(p):
-            return p == worktree
+        monkeypatch.setattr(ws_mod.os, "makedirs", lambda *_a, **_k: None)
+        monkeypatch.setattr(ws_mod.os, "rmdir", lambda *_a, **_k: None)
 
-        monkeypatch.setattr("os.path.exists", fake_exists)
+        # Atomic claim collides — os.mkdir raises FileExistsError.
+        def fake_mkdir(_path):
+            raise FileExistsError(_path)
+
+        monkeypatch.setattr(ws_mod.os, "mkdir", fake_mkdir)
 
         c = WorkspaceClient(root="/var/nd")
         ws = await c.prepare(
@@ -233,7 +391,7 @@ class TestPrepareCloneFailure:
             [(128, b"")],  # git clone --bare fails
         )
         monkeypatch.setattr("os.path.exists", lambda _p: False)
-        monkeypatch.setattr("os.makedirs", lambda *_a, **_k: None)
+        _patch_atomic_mkdir_happy(monkeypatch)
 
         c = WorkspaceClient(root="/var/nd")
         ws = await c.prepare(

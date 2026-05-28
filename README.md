@@ -116,8 +116,9 @@ Behavior:
 - **Issue tasks** create `nd/issue-<short_id>` off the repo's default
   branch (resolved from `origin/HEAD`).
 - On successful completion the worker removes the worktree; on failure or
-  pause it is left in place for inspection (toggle with
-  `WORKSPACE_KEEP_ON_FAILURE`).
+  pause it is left in place for inspection by default. Set
+  `WORKSPACE_KEEP_ON_FAILURE=0` (or `false`) to also tear it down on
+  failed/paused runs.
 
 By default `/var/nd` is ephemeral — each container restart loses both the
 bare cache and any leftover worktrees. To persist the cache, mount a

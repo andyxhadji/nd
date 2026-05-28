@@ -1,10 +1,13 @@
 """Workspace preparation: bare git cache + per-task worktrees."""
 
 import asyncio
+import errno
 import logging
 import os
 import re
 import shutil
+import stat
+import tempfile
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -20,25 +23,85 @@ class Workspace:
     bare_path: str  # absolute path to the shared bare cache
 
 
-def _auth_clone_url(
+# Validation pattern for path components used to build the bare cache path.
+# Allows letters, digits, dot, dash, underscore. Hosts may also contain ":"
+# (for ``host:port``). We explicitly reject "/", "\", and any ".." segment.
+_SAFE_HOST_RE = re.compile(r"^[A-Za-z0-9._:\-]+$")
+_SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9._\-]+$")
+
+
+def _check_safe_component(value: str, *, allow_colon: bool, label: str) -> None:
+    """Reject path-traversal-y values before they hit os.path.join.
+
+    We don't want a malicious or buggy upstream caller to be able to escape
+    ``WORKSPACE_ROOT/repos/`` via "..", absolute paths, or embedded slashes.
+    """
+    if not value:
+        raise ValueError(f"{label} must be non-empty")
+    if value in (".", ".."):
+        raise ValueError(f"{label} must not be '.' or '..'")
+    pattern = _SAFE_HOST_RE if allow_colon else _SAFE_NAME_RE
+    if not pattern.fullmatch(value):
+        raise ValueError(f"{label} contains unsafe characters: {value!r}")
+
+
+def _anon_clone_url(platform_host: str, repo_owner: str, repo_name: str) -> str:
+    """Build an anonymous HTTPS clone URL.
+
+    Tokens are *not* embedded in the URL — they are supplied at runtime via
+    a per-call ``GIT_ASKPASS`` helper so they don't appear in ``ps``/argv.
+    """
+    return f"https://{platform_host}/{repo_owner}/{repo_name}.git"
+
+
+def _askpass_env(
     platform: str,
-    platform_host: str,
-    repo_owner: str,
-    repo_name: str,
     github_token: str,
     gitlab_token: str,
-) -> str:
-    """Build an authenticated HTTPS clone URL.
+) -> tuple[dict[str, str], str | None]:
+    """Build a ``GIT_ASKPASS`` script + env dict for the given platform.
 
-    Tokens are only ever passed to ``git clone --bare`` / ``git fetch``;
-    they must never be persisted in the worktree's ``.git/config``.
+    Returns ``(env_overrides, tempdir_to_cleanup)``. ``tempdir_to_cleanup``
+    is ``None`` when no token is configured (anonymous clone path).
+
+    The askpass helper script lives in a 0700 tempdir, is itself 0700, and
+    reads the token from ``GIT_ASKPASS_TOKEN`` and the username from
+    ``GIT_ASKPASS_USERNAME``. The script and dir are removed after the git
+    invocation completes (successfully or not).
     """
-    base = f"{platform_host}/{repo_owner}/{repo_name}.git"
     if platform == "github" and github_token:
-        return f"https://x-access-token:{github_token}@{base}"
-    if platform == "gitlab" and gitlab_token:
-        return f"https://oauth2:{gitlab_token}@{base}"
-    return f"https://{base}"
+        username = "x-access-token"
+        token = github_token
+    elif platform == "gitlab" and gitlab_token:
+        username = "oauth2"
+        token = gitlab_token
+    else:
+        return {}, None
+
+    tmpdir = tempfile.mkdtemp(prefix="nd-askpass-")
+    os.chmod(tmpdir, 0o700)
+    helper_path = os.path.join(tmpdir, "askpass.sh")
+    # The helper distinguishes "Username for ..." vs "Password for ..." by
+    # the prompt git passes as $1.
+    script = (
+        "#!/bin/sh\n"
+        'case "$1" in\n'
+        '  Username*) printf "%s" "$GIT_ASKPASS_USERNAME" ;;\n'
+        '  *) printf "%s" "$GIT_ASKPASS_TOKEN" ;;\n'
+        "esac\n"
+    )
+    with open(helper_path, "w") as f:
+        f.write(script)
+    os.chmod(helper_path, stat.S_IRWXU)  # 0700
+
+    env = {
+        "GIT_ASKPASS": helper_path,
+        "GIT_ASKPASS_USERNAME": username,
+        "GIT_ASKPASS_TOKEN": token,
+        # Disable interactive terminal prompts as a belt-and-suspenders.
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+    return env, tmpdir
 
 
 class WorkspaceClient:
@@ -55,6 +118,11 @@ class WorkspaceClient:
         self.gitlab_token = gitlab_token
 
     def _bare_path(self, platform_host: str, owner: str, repo: str) -> str:
+        # Reject path-traversal payloads before constructing the path. This
+        # is defense in depth: callers should already pass clean values.
+        _check_safe_component(platform_host, allow_colon=True, label="platform_host")
+        _check_safe_component(owner, allow_colon=False, label="owner")
+        _check_safe_component(repo, allow_colon=False, label="repo")
         return os.path.join(self.root, "repos", platform_host, owner, f"{repo}.git")
 
     def _worktree_path(self, task_slug: str) -> str:
@@ -66,13 +134,25 @@ class WorkspaceClient:
         self,
         args: list[str],
         cwd: str | None = None,
+        env: dict[str, str] | None = None,
     ) -> tuple[int, str, str]:
-        """Run a subprocess and return (returncode, stdout, stderr)."""
+        """Run a subprocess and return (returncode, stdout, stderr).
+
+        When ``env`` is provided, it is merged on top of the current
+        process environment so the child inherits PATH etc.
+        """
+        full_env: dict[str, str] | None
+        if env:
+            full_env = dict(os.environ)
+            full_env.update(env)
+        else:
+            full_env = None
         proc = await asyncio.create_subprocess_exec(
             *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
+            env=full_env,
         )
         stdout, stderr = await proc.communicate()
         return proc.returncode, stdout.decode(), stderr.decode()
@@ -99,40 +179,60 @@ class WorkspaceClient:
         bare_path = self._bare_path(platform_host, repo_owner, repo_name)
         worktree_path = self._worktree_path(task_slug)
 
-        if os.path.exists(worktree_path):
+        # Atomically claim the worktree directory: ``os.makedirs`` with
+        # ``exist_ok=False`` raises ``FileExistsError`` if another caller
+        # already claimed this slug, avoiding the previous TOCTOU window.
+        # ``git worktree add`` requires the target NOT to exist, so we
+        # create the parent only and remove our placeholder before the
+        # ``worktree add`` call.
+        os.makedirs(os.path.dirname(worktree_path), exist_ok=True)
+        try:
+            os.mkdir(worktree_path)
+        except FileExistsError:
             logger.warning("worktree path %s already exists; failing prep", worktree_path)
             return None
+        except OSError as exc:
+            if exc.errno == errno.EEXIST:
+                logger.warning("worktree path %s already exists; failing prep", worktree_path)
+                return None
+            raise
+        # ``git worktree add`` refuses to create into an existing directory,
+        # so remove our placeholder now that we've reserved the slot.
+        os.rmdir(worktree_path)
 
-        auth_url = _auth_clone_url(
-            platform,
-            platform_host,
-            repo_owner,
-            repo_name,
-            self.github_token,
-            self.gitlab_token,
-        )
+        anon_url = _anon_clone_url(platform_host, repo_owner, repo_name)
+        env_overrides, askpass_tmpdir = _askpass_env(platform, self.github_token, self.gitlab_token)
         os.makedirs(os.path.dirname(bare_path), exist_ok=True)
 
-        if not os.path.exists(bare_path):
-            rc, _, err = await self._run(["git", "clone", "--bare", auth_url, bare_path])
-            if rc != 0:
-                logger.warning("git clone --bare failed: %s", err.strip())
-                return None
-        else:
-            rc, _, err = await self._run(
-                [
-                    "git",
-                    "-C",
-                    bare_path,
-                    "fetch",
-                    "--prune",
-                    auth_url,
-                    "+refs/heads/*:refs/heads/*",
-                ],
-            )
-            if rc != 0:
-                logger.warning("git fetch failed: %s", err.strip())
-                return None
+        try:
+            if not os.path.exists(bare_path):
+                rc, _, err = await self._run(
+                    ["git", "clone", "--bare", anon_url, bare_path],
+                    env=env_overrides,
+                )
+                if rc != 0:
+                    logger.warning("git clone --bare failed: %s", err.strip())
+                    return None
+            else:
+                rc, _, err = await self._run(
+                    [
+                        "git",
+                        "-C",
+                        bare_path,
+                        "fetch",
+                        "--prune",
+                        anon_url,
+                        "+refs/heads/*:refs/heads/*",
+                    ],
+                    env=env_overrides,
+                )
+                if rc != 0:
+                    logger.warning("git fetch failed: %s", err.strip())
+                    return None
+        finally:
+            # Always wipe the askpass helper, even on failure paths.
+            if askpass_tmpdir is not None:
+                shutil.rmtree(askpass_tmpdir, ignore_errors=True)
 
         # Resolve effective base_branch from origin/HEAD if needed.
         if base_branch is None:

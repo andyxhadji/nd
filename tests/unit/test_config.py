@@ -45,6 +45,9 @@ class TestConfigFromEnv:
             "GITLAB_TOKEN",
             "ND_CURRENT_USER",
             "ND_ASSIGNED_USERNAMES",
+            "AGENT_PORT",
+            "WORKSPACE_ROOT",
+            "WORKSPACE_KEEP_ON_FAILURE",
         ]:
             monkeypatch.delenv(var, raising=False)
 
@@ -62,6 +65,10 @@ class TestConfigFromEnv:
         assert cfg.gitlab_token == ""
         assert cfg.current_user == ""
         assert cfg.assigned_usernames == []
+        assert cfg.agent_port == 0
+        assert cfg.workspace_root == "/var/nd"
+        # Default for WORKSPACE_KEEP_ON_FAILURE is "1" => True.
+        assert cfg.workspace_keep_on_failure is True
 
     def test_overrides(self, monkeypatch):
         monkeypatch.setenv("AGENTFIELD_URL", "http://af:9000")
@@ -77,6 +84,9 @@ class TestConfigFromEnv:
         monkeypatch.setenv("GITLAB_TOKEN", "gl-token")
         monkeypatch.setenv("ND_CURRENT_USER", "alice")
         monkeypatch.setenv("ND_ASSIGNED_USERNAMES", "alice,bob")
+        monkeypatch.setenv("AGENT_PORT", "8002")
+        monkeypatch.setenv("WORKSPACE_ROOT", "/tmp/nd-test")
+        monkeypatch.setenv("WORKSPACE_KEEP_ON_FAILURE", "0")
 
         cfg = Config.from_env()
         assert cfg.agentfield_url == "http://af:9000"
@@ -92,6 +102,19 @@ class TestConfigFromEnv:
         assert cfg.gitlab_token == "gl-token"
         assert cfg.current_user == "alice"
         assert cfg.assigned_usernames == ["alice", "bob"]
+        assert cfg.agent_port == 8002
+        assert cfg.workspace_root == "/tmp/nd-test"
+        assert cfg.workspace_keep_on_failure is False
+
+    def test_workspace_keep_on_failure_truthy_values(self, monkeypatch):
+        # The parser treats "0", "false", "False", and "" as False; anything
+        # else is True. Cover both branches explicitly.
+        for raw in ("1", "true", "yes", "anything"):
+            monkeypatch.setenv("WORKSPACE_KEEP_ON_FAILURE", raw)
+            assert Config.from_env().workspace_keep_on_failure is True, raw
+        for raw in ("0", "false", "False", ""):
+            monkeypatch.setenv("WORKSPACE_KEEP_ON_FAILURE", raw)
+            assert Config.from_env().workspace_keep_on_failure is False, raw
 
     def test_model_falls_back_to_anthropic_default(self, monkeypatch):
         monkeypatch.delenv("TRIAGE_MODEL", raising=False)

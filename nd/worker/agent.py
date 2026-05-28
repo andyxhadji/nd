@@ -210,6 +210,24 @@ def create_worker_agent(
             ).model_dump()
         repo_path = ws.repo_path
 
+        async def _maybe_cleanup_on_failure() -> None:
+            """Tear down the worktree on failure/pause when configured.
+
+            The default (``WORKSPACE_KEEP_ON_FAILURE=1``) leaves the worktree
+            in place for human inspection. Operators that don't want stale
+            worktrees can set ``WORKSPACE_KEEP_ON_FAILURE=0`` to have us
+            clean up here too.
+            """
+            if config.workspace_keep_on_failure:
+                return
+            if ws.bare_path is None:
+                return
+            await app.call(
+                f"{app.node_id}.cleanup_workspace",
+                repo_path=repo_path,
+                bare_path=ws.bare_path,
+            )
+
         # Analyze task
         analysis_result = await app.call(
             f"{app.node_id}.analyze_task",
@@ -249,6 +267,7 @@ def create_worker_agent(
 
             if not approval.approved:
                 await kata.label(task_id, "needs-human")
+                await _maybe_cleanup_on_failure()
                 return ProcessResult(
                     status="paused_for_spec",
                     error="Spec rejected by human reviewer",
@@ -267,6 +286,7 @@ def create_worker_agent(
 
         if not execution.success:
             await kata.label(task_id, "failed")
+            await _maybe_cleanup_on_failure()
             return ProcessResult(
                 status="failed",
                 error=execution.error,
@@ -297,6 +317,7 @@ def create_worker_agent(
 
             if not approval.approved:
                 await kata.label(task_id, "needs-human")
+                await _maybe_cleanup_on_failure()
                 return ProcessResult(
                     status="paused_for_review",
                     error="Roborev failed and human rejected",
@@ -330,6 +351,7 @@ def create_worker_agent(
 
         if not approval.approved:
             await kata.label(task_id, "addressed")
+            await _maybe_cleanup_on_failure()
             return ProcessResult(
                 status="paused_for_review",
                 changes_made=execution.files_changed,
@@ -487,8 +509,19 @@ Create a detailed spec.""",
             rc_sha, sha = await _git(["rev-parse", "HEAD"])
             commit_sha = sha if rc_sha == 0 and sha else None
 
+            # Use ``git diff-tree`` so we don't depend on HEAD having a
+            # parent — this works on the first commit, on orphan branches,
+            # and even when the harness made no commit (the diff against
+            # the empty tree is empty, which yields an empty list, not an
+            # error).
             rc_files, files_text = await _git(
-                ["diff", "--name-only", "HEAD~1..HEAD"],
+                [
+                    "diff-tree",
+                    "--no-commit-id",
+                    "--name-only",
+                    "-r",
+                    "HEAD",
+                ],
             )
             files_changed = [f for f in files_text.splitlines() if f] if rc_files == 0 else []
 

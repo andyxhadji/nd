@@ -84,20 +84,32 @@ class TestWorkspaceResultShape:
         assert payload["error"] == "boom"
         assert payload["repo_path"] is None
         assert payload["bare_path"] is None
+        assert payload["branch"] is None
+        assert payload["base_branch"] is None
 
         rebuilt = WorkspaceResult(**payload)
         assert rebuilt.prepared is False
+        assert rebuilt.error == "boom"
         assert rebuilt.repo_path is None
+        assert rebuilt.bare_path is None
+        assert rebuilt.branch is None
+        assert rebuilt.base_branch is None
 
     def test_success_round_trips(self):
-        payload = WorkspaceResult(
+        original = WorkspaceResult(
             prepared=True,
             repo_path="/var/nd/work/myproj-7by6",
             branch="master",
             base_branch="master",
             bare_path="/var/nd/repos/github.com/octocat/Hello-World.git",
-        ).model_dump()
+        )
+        payload = original.model_dump()
         rebuilt = WorkspaceResult(**payload)
         assert rebuilt.prepared is True
         assert rebuilt.repo_path == "/var/nd/work/myproj-7by6"
-        assert rebuilt.bare_path.endswith(".git")
+        assert rebuilt.branch == "master"
+        assert rebuilt.base_branch == "master"
+        assert rebuilt.bare_path == "/var/nd/repos/github.com/octocat/Hello-World.git"
+        assert rebuilt.error is None
+        # The full object must round-trip identically.
+        assert rebuilt == original
