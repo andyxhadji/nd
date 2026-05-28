@@ -693,7 +693,7 @@ Draft the reply.""",
                 except (json.JSONDecodeError, TypeError):
                     pass  # Use outer values if nested parsing fails
 
-        except (json.JSONDecodeError, TypeError, AttributeError) as e:
+        except (json.JSONDecodeError, TypeError, AttributeError):
             # Fallback: use the raw result as message
             message = str(llm_result) if llm_result else "Changes completed as requested."
             confident = False

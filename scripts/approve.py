@@ -13,12 +13,12 @@ Decision options: approved, rejected, request_changes
 Default: approved
 """
 
-import sys
-import json
-import hmac
 import hashlib
-import urllib.request
+import hmac
+import json
+import sys
 import urllib.error
+import urllib.request
 from typing import Literal
 
 Decision = Literal["approved", "rejected", "request_changes"]
@@ -43,14 +43,10 @@ def approve_request(
     if feedback:
         payload["feedback"] = feedback
 
-    data = json.dumps(payload).encode('utf-8')
+    data = json.dumps(payload).encode("utf-8")
 
     # Generate HMAC-SHA256 signature
-    signature = hmac.new(
-        WEBHOOK_SECRET.encode('utf-8'),
-        data,
-        hashlib.sha256
-    ).hexdigest()
+    signature = hmac.new(WEBHOOK_SECRET.encode("utf-8"), data, hashlib.sha256).hexdigest()
 
     req = urllib.request.Request(
         url,
@@ -97,7 +93,7 @@ def main():
 
     print("\nResponse:")
     print(json.dumps(result, indent=2))
-    print(f"\n✓ Approval sent successfully")
+    print("\n✓ Approval sent successfully")
 
 
 if __name__ == "__main__":

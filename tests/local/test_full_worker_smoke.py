@@ -288,8 +288,7 @@ def test_full_worker_creates_real_pull_request() -> None:
     if "reasoner.failed" in worker_logs.stdout:
         # Look for failures related to this specific task
         failed_lines = [
-            line for line in worker_logs.stdout.splitlines()
-            if "reasoner.failed" in line
+            line for line in worker_logs.stdout.splitlines() if "reasoner.failed" in line
         ]
         if failed_lines:
             raise AssertionError(
@@ -319,6 +318,5 @@ def test_full_worker_creates_real_pull_request() -> None:
     # Success: PR created, task is paused for response approval
     # (The human approval gate is part of the design - not a failure)
     assert status in ("open", "closed"), (
-        f"task {short_id} should be open (paused for approval) or closed, "
-        f"got status={status}"
+        f"task {short_id} should be open (paused for approval) or closed, got status={status}"
     )
