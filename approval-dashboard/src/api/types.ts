@@ -71,9 +71,11 @@ export interface RoborevContext {
 }
 
 export interface ResponseContext {
-  response: string;
+  draftResponse: string;
   filesChanged: string[];
   commitSha: string;
+  originalComment: string;
+  mrUrl: string;
 }
 
 // Approval webhook types

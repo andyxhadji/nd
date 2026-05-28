@@ -128,19 +128,31 @@ function parseRoborevContext(run: AgentFieldRun): RoborevContext | undefined {
 function parseResponseContext(run: AgentFieldRun): ResponseContext | undefined {
   // Extract execution result
   const executeCall = run.trace.find((call) => call.name.endsWith('.execute_changes'));
-  const execution = executeCall?.output as any;
+  const execution = executeCall?.output;
 
   // Extract draft response
   const draftCall = run.trace.find((call) => call.name.endsWith('.draft_response'));
-  const draft = draftCall?.output as any;
+  const draft = draftCall?.output;
+
+  // Extract publish result for MR URL
+  const publishCall = run.trace.find((call) => call.name.endsWith('.publish_changes'));
+  const publish = publishCall?.output;
 
   if (!execution || !draft) {
     return undefined;
   }
 
+  // Extract original comment from process_task
+  const processTaskCall = run.trace.find((call) => call.name.endsWith('.process_task'));
+  const taskBody = (processTaskCall?.input.body as string) || '';
+  const commentMatch = taskBody.match(/## Original Comment\n\*\*Author:\*\* [^\n]+\n\n(.*?)\n\n## Metadata/s);
+  const originalComment = commentMatch ? commentMatch[1].trim() : '';
+
   return {
-    filesChanged: (execution.files_changed as string[]) || [],
-    commitSha: (execution.commit_sha as string) || '',
-    response: (draft.response as string) || '',
+    draftResponse: (draft as any).response_text || '',
+    filesChanged: (execution as any).files_changed || [],
+    commitSha: (execution as any).commit_sha || '',
+    originalComment,
+    mrUrl: (publish as any)?.merge_request_url || run.pauseContext?.approval_request_url || '',
   };
 }
