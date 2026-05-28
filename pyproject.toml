@@ -28,6 +28,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "functional: Functional integration tests",
+    "local: Local-only tests that require external services and are skipped by default",
     "unit: Unit tests",
 ]
 

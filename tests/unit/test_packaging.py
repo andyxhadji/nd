@@ -27,3 +27,12 @@ def test_worker_compose_configures_claude_code_bedrock() -> None:
         "application-inference-profile/mj2ayeqbysnr}"
     ) in compose
     assert "CLAUDE_CODE_MAX_OUTPUT_TOKENS=${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-4096}" in compose
+
+
+def test_full_worker_smoke_is_local_only() -> None:
+    smoke_test = Path("tests/local/test_full_worker_smoke.py")
+    source = smoke_test.read_text()
+
+    assert "ND_RUN_FULL_WORKER_SMOKE" in source
+    assert "pytest.skip" in source
+    assert "docker compose" in source

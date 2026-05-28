@@ -204,6 +204,9 @@ pytest tests/unit/ -v
 # Run functional tests
 pytest tests/functional/ -v
 
+# Run the full local worker smoke (creates a real GitHub PR; not for CI)
+ND_RUN_FULL_WORKER_SMOKE=1 pytest tests/local/test_full_worker_smoke.py -v -s
+
 # Run with coverage
 pytest --cov=nd
 ```
