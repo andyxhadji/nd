@@ -36,8 +36,8 @@ All configuration via environment variables:
 | `AGENT_PORT` | `0` (auto) | Fixed port for the agent's HTTP server. Used by Docker Compose to give each agent (triage, worker-1, worker-2) a distinct port inside the shared `kata-daemon` netns. Empty/0 → auto-pick. |
 | `CONFIDENCE_THRESHOLD` | `70` | Minimum confidence for auto-execution |
 | `ROBOREV_MAX_ITERATIONS` | `3` | Max roborev-refine iterations |
-| `TRIAGE_MODEL` | `openrouter/anthropic/claude-sonnet-4` | LLM model for triage |
-| `WORKER_MODEL` | `openrouter/anthropic/claude-sonnet-4` | LLM model for worker |
+| `TRIAGE_MODEL` | `bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/jftfdg2lriyw` | LLM model for triage |
+| `WORKER_MODEL` | `bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/jftfdg2lriyw` | LLM model for worker |
 | `AGENT_INSTANCE_ID` | `worker-1` | Unique ID for worker instance |
 | `GITHUB_TOKEN` | (empty) | GitHub API token for posting responses |
 | `GITLAB_TOKEN` | (empty) | GitLab API token for posting responses |

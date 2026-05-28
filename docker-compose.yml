@@ -46,7 +46,7 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
-      - TRIAGE_MODEL=${TRIAGE_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/fa9v3zo70aog}
+      - TRIAGE_MODEL=${TRIAGE_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/jftfdg2lriyw}
       - ND_CURRENT_USER=${ND_CURRENT_USER}
       - KATA_SERVER=http://127.0.0.1:7878
     depends_on:
@@ -70,7 +70,7 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
-      - WORKER_MODEL=${WORKER_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/fa9v3zo70aog}
+      - WORKER_MODEL=${WORKER_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/jftfdg2lriyw}
       - AGENT_INSTANCE_ID=worker-1
       - KATA_SERVER=http://127.0.0.1:7878
       - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}
@@ -96,7 +96,7 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
-      - WORKER_MODEL=${WORKER_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/fa9v3zo70aog}
+      - WORKER_MODEL=${WORKER_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/jftfdg2lriyw}
       - AGENT_INSTANCE_ID=worker-2
       - KATA_SERVER=http://127.0.0.1:7878
       - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}

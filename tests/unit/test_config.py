@@ -39,7 +39,7 @@ class TestConfigFromEnv:
             "ROBOREV_MAX_ITERATIONS",
             "TRIAGE_MODEL",
             "WORKER_MODEL",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
             "AGENT_INSTANCE_ID",
             "GITHUB_TOKEN",
             "GITLAB_TOKEN",
@@ -58,8 +58,8 @@ class TestConfigFromEnv:
         assert cfg.kata_server == ""
         assert cfg.confidence_threshold == 70
         assert cfg.roborev_max_iterations == 3
-        assert cfg.triage_model == "anthropic/claude-sonnet-4-20250514"
-        assert cfg.worker_model == "anthropic/claude-sonnet-4-20250514"
+        assert cfg.triage_model == "anthropic/claude-opus-4-20250514"
+        assert cfg.worker_model == "anthropic/claude-opus-4-20250514"
         assert cfg.agent_instance_id == "worker-1"
         assert cfg.github_token == ""
         assert cfg.gitlab_token == ""
@@ -119,7 +119,7 @@ class TestConfigFromEnv:
     def test_model_falls_back_to_anthropic_default(self, monkeypatch):
         monkeypatch.delenv("TRIAGE_MODEL", raising=False)
         monkeypatch.delenv("WORKER_MODEL", raising=False)
-        monkeypatch.setenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "anthropic/claude-test")
+        monkeypatch.setenv("ANTHROPIC_DEFAULT_OPUS_MODEL", "anthropic/claude-test")
 
         cfg = Config.from_env()
         assert cfg.triage_model == "anthropic/claude-test"
