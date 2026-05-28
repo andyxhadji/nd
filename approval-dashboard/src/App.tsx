@@ -20,13 +20,13 @@ export default function App() {
       if (!traces[approval.runId]) {
         try {
           const run = await fetchRunDetails(approval.runId);
-          setTraces((prev) => ({ ...prev, [approval.runId]: run.trace }));
+          setTraces((prev) => ({ ...prev, [approval.runId]: run.trace || [] }));
         } catch (error) {
           console.error(`Failed to fetch trace for ${approval.runId}:`, error);
         }
       }
     });
-  }, [approvals]);
+  }, [approvals, traces]);
 
   const filteredApprovals = approvals?.filter((a) => a.approvalType === activeTab) || [];
 

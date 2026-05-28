@@ -29,10 +29,10 @@ export function parseApprovalContext(run: AgentFieldRun): ApprovalContext | null
   const taskId = match[2];
 
   // Calculate expiration
-  const expiresAt = new Date(new Date(run.createdAt).getTime() + expires_in_hours * 3600 * 1000);
+  const expiresAt = new Date(new Date(run.started_at).getTime() + expires_in_hours * 3600 * 1000);
 
   // Extract common context from process_task input
-  const processTaskCall = run.trace.find((call) => call.name.endsWith('.process_task'));
+  const processTaskCall = run.trace?.find((call) => call.name.endsWith('.process_task'));
   const taskTitle = (processTaskCall?.input.title as string) || 'Unknown Task';
   const projectName = (processTaskCall?.input.project as string) || 'Unknown Project';
   const taskBody = (processTaskCall?.input.body as string) || '';
@@ -44,7 +44,7 @@ export function parseApprovalContext(run: AgentFieldRun): ApprovalContext | null
   const baseContext: ApprovalContext = {
     approvalType,
     taskId,
-    runId: run.runId,
+    runId: run.run_id,
     requestId: approval_request_id,
     mrUrl: approval_request_url || undefined,
     expiresAt,
@@ -67,11 +67,11 @@ export function parseApprovalContext(run: AgentFieldRun): ApprovalContext | null
 
 function parseSpecContext(run: AgentFieldRun): SpecReviewContext | undefined {
   // Extract analysis result from analyze_task
-  const analyzeCall = run.trace.find((call) => call.name.endsWith('.analyze_task'));
+  const analyzeCall = run.trace?.find((call) => call.name.endsWith('.analyze_task'));
   const analysis = analyzeCall?.output as any;
 
   // Extract spec from plan_changes
-  const planCall = run.trace.find((call) => call.name.endsWith('.plan_changes'));
+  const planCall = run.trace?.find((call) => call.name.endsWith('.plan_changes'));
   const spec = planCall?.output as any;
 
   if (!analysis || !spec) {
@@ -99,11 +99,11 @@ function parseSpecContext(run: AgentFieldRun): SpecReviewContext | undefined {
 
 function parseRoborevContext(run: AgentFieldRun): RoborevContext | undefined {
   // Extract execution result
-  const executeCall = run.trace.find((call) => call.name.endsWith('.execute_changes'));
+  const executeCall = run.trace?.find((call) => call.name.endsWith('.execute_changes'));
   const execution = executeCall?.output as any;
 
   // Extract roborev result
-  const roborevCall = run.trace.find((call) => call.name.endsWith('.run_roborev'));
+  const roborevCall = run.trace?.find((call) => call.name.endsWith('.run_roborev'));
   const roborev = roborevCall?.output as any;
 
   if (!execution || !roborev) {
@@ -111,7 +111,7 @@ function parseRoborevContext(run: AgentFieldRun): RoborevContext | undefined {
   }
 
   // Extract original comment from process_task
-  const processTaskCall = run.trace.find((call) => call.name.endsWith('.process_task'));
+  const processTaskCall = run.trace?.find((call) => call.name.endsWith('.process_task'));
   const taskBody = (processTaskCall?.input.body as string) || '';
   const commentMatch = taskBody.match(/## Original Comment\n\*\*Author:\*\* [^\n]+\n\n(.*?)\n\n## Metadata/s);
   const originalComment = commentMatch ? commentMatch[1].trim() : '';
@@ -127,15 +127,15 @@ function parseRoborevContext(run: AgentFieldRun): RoborevContext | undefined {
 
 function parseResponseContext(run: AgentFieldRun): ResponseContext | undefined {
   // Extract execution result
-  const executeCall = run.trace.find((call) => call.name.endsWith('.execute_changes'));
+  const executeCall = run.trace?.find((call) => call.name.endsWith('.execute_changes'));
   const execution = executeCall?.output;
 
   // Extract draft response
-  const draftCall = run.trace.find((call) => call.name.endsWith('.draft_response'));
+  const draftCall = run.trace?.find((call) => call.name.endsWith('.draft_response'));
   const draft = draftCall?.output;
 
   // Extract publish result for MR URL
-  const publishCall = run.trace.find((call) => call.name.endsWith('.publish_changes'));
+  const publishCall = run.trace?.find((call) => call.name.endsWith('.publish_changes'));
   const publish = publishCall?.output;
 
   if (!execution || !draft) {
@@ -143,7 +143,7 @@ function parseResponseContext(run: AgentFieldRun): ResponseContext | undefined {
   }
 
   // Extract original comment from process_task
-  const processTaskCall = run.trace.find((call) => call.name.endsWith('.process_task'));
+  const processTaskCall = run.trace?.find((call) => call.name.endsWith('.process_task'));
   const taskBody = (processTaskCall?.input.body as string) || '';
   const commentMatch = taskBody.match(/## Original Comment\n\*\*Author:\*\* [^\n]+\n\n(.*?)\n\n## Metadata/s);
   const originalComment = commentMatch ? commentMatch[1].trim() : '';

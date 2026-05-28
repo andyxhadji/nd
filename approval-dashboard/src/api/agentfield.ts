@@ -7,7 +7,8 @@ export const POLL_INTERVAL_MS = 5000;
 export const REQUEST_TIMEOUT_MS = 10000;
 
 /**
- * Fetch all runs with status=waiting from AgentField.
+ * Fetch all runs with status=waiting or paused from AgentField.
+ * Uses the /api/ui/v2/workflow-runs endpoint.
  */
 export async function fetchWaitingRuns(): Promise<AgentFieldRun[]> {
   const controller = new AbortController();
@@ -15,7 +16,7 @@ export async function fetchWaitingRuns(): Promise<AgentFieldRun[]> {
 
   try {
     const response = await fetch(
-      `${AGENTFIELD_URL}/api/v1/runs?status=waiting`,
+      `${AGENTFIELD_URL}/api/ui/v2/workflow-runs?status=paused&page=1&page_size=50`,
       { signal: controller.signal }
     );
 
@@ -24,7 +25,8 @@ export async function fetchWaitingRuns(): Promise<AgentFieldRun[]> {
     }
 
     const data = await response.json();
-    return Array.isArray(data) ? data : [];
+    // The API returns { workflows: [...], total_count, page, page_size, has_more }
+    return Array.isArray(data.workflows) ? data.workflows : Array.isArray(data.runs) ? data.runs : [];
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Request timeout');
@@ -37,6 +39,7 @@ export async function fetchWaitingRuns(): Promise<AgentFieldRun[]> {
 
 /**
  * Fetch detailed run information including execution trace.
+ * Uses the workflow_id to get DAG details.
  */
 export async function fetchRunDetails(runId: string): Promise<AgentFieldRun> {
   const controller = new AbortController();
@@ -44,7 +47,7 @@ export async function fetchRunDetails(runId: string): Promise<AgentFieldRun> {
 
   try {
     const response = await fetch(
-      `${AGENTFIELD_URL}/api/v1/runs/${runId}`,
+      `${AGENTFIELD_URL}/api/ui/v1/workflows/${runId}/dag`,
       { signal: controller.signal }
     );
 

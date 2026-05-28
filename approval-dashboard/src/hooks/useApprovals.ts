@@ -10,20 +10,20 @@ export function useApprovals() {
   return useQuery<ApprovalContext[], Error>({
     queryKey: ['approvals'],
     queryFn: async () => {
-      // Fetch waiting runs
+      // Fetch waiting runs (already filtered to paused status)
       const runs = await fetchWaitingRuns();
 
-      // Filter to nd-worker runs only
-      const workerRuns = runs.filter((run) => run.nodeId === 'nd-worker');
+      // Filter to nd-worker runs only (agent_id should be 'nd-worker')
+      const workerRuns = runs.filter((run) => run.agent_id === 'nd-worker');
 
       // Fetch details and parse context for each run
       const contexts = await Promise.all(
         workerRuns.map(async (run) => {
           try {
-            const details = await fetchRunDetails(run.runId);
+            const details = await fetchRunDetails(run.run_id);
             return parseApprovalContext(details);
           } catch (error) {
-            console.error(`Failed to fetch details for run ${run.runId}:`, error);
+            console.error(`Failed to fetch details for run ${run.run_id}:`, error);
             return null;
           }
         })

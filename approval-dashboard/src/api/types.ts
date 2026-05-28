@@ -1,12 +1,29 @@
 // AgentField API types
 
 export interface AgentFieldRun {
-  runId: string;
-  nodeId: string;
-  status: 'waiting' | 'running' | 'completed' | 'failed';
-  createdAt: string;
-  updatedAt: string;
-  trace: ReasonerCall[];
+  run_id: string;
+  workflow_id: string;
+  root_execution_id?: string;
+  root_execution_status?: 'waiting' | 'running' | 'completed' | 'failed' | 'paused' | 'pending' | 'queued' | 'cancelled' | 'timeout';
+  status: 'waiting' | 'running' | 'completed' | 'failed' | 'paused' | 'pending' | 'queued' | 'cancelled' | 'timeout';
+  root_reasoner?: string;
+  current_task?: string;
+  display_name?: string;
+  agent_id?: string;
+  session_id?: string;
+  actor_id?: string;
+  started_at: string;
+  latest_activity?: string;
+  completed_at?: string;
+  duration_ms?: number;
+  total_executions?: number;
+  max_depth?: number;
+  active_executions?: number;
+  terminal?: boolean;
+  status_counts?: Record<string, number>;
+  root_error_category?: string;
+  root_error_message?: string;
+  trace?: ReasonerCall[];
   pauseContext?: PauseContext;
 }
 
