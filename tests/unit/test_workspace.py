@@ -435,3 +435,52 @@ class TestCleanup:
         ok = await c.cleanup(repo_path=repo_path, bare_path=bare_path)
         assert ok is False
         assert called == {"path": repo_path, "ignore_errors": True}
+
+
+@pytest.mark.asyncio
+class TestPush:
+    async def test_pushes_head_to_named_branch_with_askpass_env(self, monkeypatch):
+        captured = _patch_subprocess_sequence(monkeypatch, [(0, b"")])
+        monkeypatch.setattr(
+            "nd.clients.workspace._askpass_env",
+            lambda platform, gh, gl: (
+                {
+                    "GIT_ASKPASS": "/tmp/fake-askpass.sh",
+                    "GIT_ASKPASS_USERNAME": "oauth2",
+                    "GIT_ASKPASS_TOKEN": gl,
+                    "GIT_TERMINAL_PROMPT": "0",
+                },
+                None,
+            ),
+        )
+
+        c = WorkspaceClient(root="/var/nd", gitlab_token="glpat_secret")
+        ok = await c.push(
+            platform="gitlab",
+            repo_path="/var/nd/work/repo-0007",
+            branch="nd/issue-0007",
+        )
+
+        assert ok is True
+        cmd = captured["cmds"][0]
+        assert cmd == (
+            "git",
+            "-C",
+            "/var/nd/work/repo-0007",
+            "push",
+            "origin",
+            "HEAD:nd/issue-0007",
+        )
+        assert captured["envs"][0]["GIT_ASKPASS_TOKEN"] == "glpat_secret"
+
+    async def test_push_returns_false_on_git_failure(self, monkeypatch):
+        _patch_subprocess_sequence(monkeypatch, [(1, b"")])
+        monkeypatch.setattr(
+            "nd.clients.workspace._askpass_env",
+            lambda _platform, _gh, _gl: ({}, None),
+        )
+
+        c = WorkspaceClient(root="/var/nd")
+        ok = await c.push(platform="github", repo_path="/var/nd/work/repo-0007", branch="main")
+
+        assert ok is False

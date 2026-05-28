@@ -751,3 +751,75 @@ class TestPlatformClientAsync:
         client = PlatformClient(github_token="", gitlab_token="")
         await client.close()
         await client.close()
+
+    @pytest.mark.asyncio
+    async def test_create_gitlab_merge_request_success(self):
+        calls: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            return httpx.Response(
+                201, json={"web_url": "https://gitlab.example.com/o/r/-/merge_requests/9"}
+            )
+
+        client = PlatformClient(github_token="", gitlab_token="gl")
+        client._gitlab_client = httpx.AsyncClient(
+            base_url="https://gitlab.example.com",
+            transport=httpx.MockTransport(handler),
+        )
+
+        url = await client.create_merge_request(
+            platform="gitlab",
+            platform_host="gitlab.example.com",
+            owner="o",
+            repo="r",
+            source_branch="nd/issue-0007",
+            target_branch="main",
+            title="Fix parser",
+            body="Addresses issue 7",
+        )
+
+        assert url == "https://gitlab.example.com/o/r/-/merge_requests/9"
+        assert calls[0].url.raw_path == b"/api/v4/projects/o%2Fr/merge_requests"
+        assert json.loads(calls[0].content) == {
+            "source_branch": "nd/issue-0007",
+            "target_branch": "main",
+            "title": "Fix parser",
+            "description": "Addresses issue 7",
+        }
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_create_github_pull_request_success(self):
+        calls: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            return httpx.Response(201, json={"html_url": "https://github.com/o/r/pull/9"})
+
+        client = PlatformClient(github_token="gh", gitlab_token="")
+        client._github_client = httpx.AsyncClient(
+            base_url="https://api.github.com",
+            transport=httpx.MockTransport(handler),
+        )
+
+        url = await client.create_merge_request(
+            platform="github",
+            platform_host="github.com",
+            owner="o",
+            repo="r",
+            source_branch="nd/issue-0007",
+            target_branch="main",
+            title="Fix parser",
+            body="Addresses issue 7",
+        )
+
+        assert url == "https://github.com/o/r/pull/9"
+        assert calls[0].url.path == "/repos/o/r/pulls"
+        assert json.loads(calls[0].content) == {
+            "head": "nd/issue-0007",
+            "base": "main",
+            "title": "Fix parser",
+            "body": "Addresses issue 7",
+        }
+        await client.close()

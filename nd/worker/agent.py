@@ -18,6 +18,7 @@ from nd.schemas import (
     DraftResult,
     ExecutionResult,
     ProcessResult,
+    PublishResult,
     RoborevResult,
     SpecDocument,
     WorkspaceResult,
@@ -321,6 +322,28 @@ def create_worker_agent(
                     error="Roborev failed and human rejected",
                 ).model_dump()
 
+        publish_result = await app.call(
+            f"{app.node_id}.publish_changes",
+            repo_path=repo_path,
+            branch=ws.branch or context.get("head_branch", ""),
+            platform=context.get("platform", ""),
+            platform_host=context.get("platform_host", ""),
+            repo_owner=context.get("repo_owner", ""),
+            repo_name=context.get("repo_name", project),
+            base_branch=ws.base_branch or context.get("base_branch", "main"),
+            title=context.get("mr_title", title),
+            source_url=context.get("mr_url", ""),
+            is_issue=is_issue,
+        )
+        publish = PublishResult(**publish_result)
+        if not publish.pushed:
+            await kata.label(task_id, "failed")
+            await _maybe_cleanup_on_failure()
+            return ProcessResult(
+                status="failed",
+                error=publish.error or "publish failed",
+            ).model_dump()
+
         # Draft response
         draft_result = await app.call(
             f"{app.node_id}.draft_response",
@@ -359,17 +382,19 @@ def create_worker_agent(
         # Get potentially edited response from approval
         final_response = approval.feedback or draft.response_text
 
-        # Post response
-        await app.call(
-            f"{app.node_id}.post_response",
-            response_text=final_response,
-            dedupe_key=context.get("dedupe_key", ""),
-            platform=context.get("platform", ""),
-            platform_host=context.get("platform_host", ""),
-            repo_owner=context.get("repo_owner", ""),
-            repo_name=project,
-            mr_number=context.get("mr_number", 0),
-        )
+        # Issue tasks create a new MR instead of replying to an existing MR
+        # discussion thread.
+        if not is_issue:
+            await app.call(
+                f"{app.node_id}.post_response",
+                response_text=final_response,
+                dedupe_key=context.get("dedupe_key", ""),
+                platform=context.get("platform", ""),
+                platform_host=context.get("platform_host", ""),
+                repo_owner=context.get("repo_owner", ""),
+                repo_name=project,
+                mr_number=context.get("mr_number", 0),
+            )
 
         # Finalize task
         await app.call(
@@ -378,6 +403,7 @@ def create_worker_agent(
             status="completed",
             response_posted=True,
             commit_sha=execution.commit_sha,
+            merge_request_url=publish.merge_request_url,
         )
 
         # Clean up the worktree only on successful completion. Failed and
@@ -623,6 +649,51 @@ Draft a response.""",
         ).model_dump()
 
     @app.reasoner()
+    async def publish_changes(
+        repo_path: str,
+        branch: str,
+        platform: str,
+        platform_host: str,
+        repo_owner: str,
+        repo_name: str,
+        base_branch: str,
+        title: str,
+        source_url: str,
+        is_issue: bool,
+    ) -> dict:
+        """Push committed changes and create an MR for issue tasks."""
+        if not branch:
+            return PublishResult(pushed=False, error="missing branch").model_dump()
+
+        pushed = await workspace.push(
+            platform=platform,
+            repo_path=repo_path,
+            branch=branch,
+        )
+        if not pushed:
+            return PublishResult(pushed=False, error="git push failed").model_dump()
+
+        if not is_issue:
+            return PublishResult(pushed=True).model_dump()
+
+        mr_url = await _platform.create_merge_request(
+            platform=platform,
+            platform_host=platform_host,
+            owner=repo_owner,
+            repo=repo_name,
+            source_branch=branch,
+            target_branch=base_branch,
+            title=title,
+            body=f"Addresses {source_url}",
+        )
+        if not mr_url:
+            return PublishResult(
+                pushed=True,
+                error="merge request creation failed",
+            ).model_dump()
+        return PublishResult(pushed=True, merge_request_url=mr_url).model_dump()
+
+    @app.reasoner()
     async def post_response(
         response_text: str,
         dedupe_key: str,
@@ -636,7 +707,7 @@ Draft a response.""",
         parts = dedupe_key.split(":")
         thread_id = parts[-1] if len(parts) >= 7 else ""
 
-        success = await platform.post_response(
+        success = await _platform.post_response(
             platform=platform,
             platform_host=platform_host,
             owner=repo_owner,
@@ -654,13 +725,17 @@ Draft a response.""",
         status: str,
         response_posted: bool,
         commit_sha: str | None = None,
+        merge_request_url: str | None = None,
     ) -> dict:
         """Update kata task state after completion."""
         if response_posted:
-            await kata.comment(
-                task_id,
-                f"Response posted. Commit: {commit_sha or 'N/A'}",
-            )
+            if merge_request_url:
+                await kata.comment(task_id, f"Merge request created: {merge_request_url}")
+            else:
+                await kata.comment(
+                    task_id,
+                    f"Response posted. Commit: {commit_sha or 'N/A'}",
+                )
             await kata.label(task_id, "responded")
             await kata.close(task_id, reason="done", comment="Addressed and responded")
         elif status == "failed":

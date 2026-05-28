@@ -153,3 +153,92 @@ class PlatformClient:
             )
         else:
             raise ValueError(f"Unsupported platform: {platform}")
+
+    async def create_merge_request(
+        self,
+        *,
+        platform: str,
+        platform_host: str,
+        owner: str,
+        repo: str,
+        source_branch: str,
+        target_branch: str,
+        title: str,
+        body: str,
+    ) -> str | None:
+        """Create a merge/pull request and return its browser URL."""
+        if platform == "gitlab":
+            return await self.create_gitlab_merge_request(
+                host=platform_host,
+                owner=owner,
+                repo=repo,
+                source_branch=source_branch,
+                target_branch=target_branch,
+                title=title,
+                body=body,
+            )
+        elif platform == "github":
+            return await self.create_github_pull_request(
+                owner=owner,
+                repo=repo,
+                source_branch=source_branch,
+                target_branch=target_branch,
+                title=title,
+                body=body,
+            )
+        else:
+            raise ValueError(f"Unsupported platform: {platform}")
+
+    async def create_gitlab_merge_request(
+        self,
+        *,
+        host: str,
+        owner: str,
+        repo: str,
+        source_branch: str,
+        target_branch: str,
+        title: str,
+        body: str,
+    ) -> str | None:
+        """Create a GitLab merge request."""
+        client = await self._get_gitlab_client(host)
+        project_path = quote(f"{owner}/{repo}", safe="")
+        response = await client.post(
+            f"/api/v4/projects/{project_path}/merge_requests",
+            json={
+                "source_branch": source_branch,
+                "target_branch": target_branch,
+                "title": title,
+                "description": body,
+            },
+        )
+        if response.status_code not in (200, 201):
+            return None
+        return response.json().get("web_url")
+
+    async def create_github_pull_request(
+        self,
+        *,
+        owner: str,
+        repo: str,
+        source_branch: str,
+        target_branch: str,
+        title: str,
+        body: str,
+    ) -> str | None:
+        """Create a GitHub pull request."""
+        client = await self._get_github_client()
+        owner_escaped = quote(owner, safe="")
+        repo_escaped = quote(repo, safe="")
+        response = await client.post(
+            f"/repos/{owner_escaped}/{repo_escaped}/pulls",
+            json={
+                "head": source_branch,
+                "base": target_branch,
+                "title": title,
+                "body": body,
+            },
+        )
+        if response.status_code not in (200, 201):
+            return None
+        return response.json().get("html_url")

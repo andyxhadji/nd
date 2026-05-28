@@ -300,3 +300,19 @@ class WorkspaceClient:
             shutil.rmtree(repo_path, ignore_errors=True)
             return False
         return True
+
+    async def push(self, *, platform: str, repo_path: str, branch: str) -> bool:
+        """Push the prepared worktree branch back to origin."""
+        env_overrides, askpass_tmpdir = _askpass_env(platform, self.github_token, self.gitlab_token)
+        try:
+            rc, _, err = await self._run(
+                ["git", "-C", repo_path, "push", "origin", f"HEAD:{branch}"],
+                env=env_overrides,
+            )
+            if rc != 0:
+                logger.warning("git push failed: %s", err.strip())
+                return False
+            return True
+        finally:
+            if askpass_tmpdir is not None:
+                shutil.rmtree(askpass_tmpdir, ignore_errors=True)

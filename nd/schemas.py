@@ -222,6 +222,14 @@ class DraftResult(BaseModel):
     confident: bool
 
 
+class PublishResult(BaseModel):
+    """Result of publishing committed changes back to the code host."""
+
+    pushed: bool
+    merge_request_url: str | None = None
+    error: str | None = None
+
+
 class ApprovalRequest(BaseModel):
     """Request for human approval of response."""
 
