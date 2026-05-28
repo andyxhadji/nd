@@ -1,14 +1,14 @@
 services:
-  agentfield:
-    image: agentfield/control-plane:latest
-    ports:
-      - "8081:8080"
-    volumes:
-      - agentfield-data:/data
-    environment:
-      - DATABASE_URL=sqlite:///data/agentfield.db
-      - LOG_LEVEL=info
-      - AGENTFIELD_APPROVAL_WEBHOOK_SECRET=nd-approval-secret-dev
+  # agentfield:
+  #   image: agentfield/control-plane:latest
+  #   ports:
+  #     - "8081:8080"
+  #   volumes:
+  #     - agentfield-data:/data
+  #   environment:
+  #     - DATABASE_URL=sqlite:///data/agentfield.db
+  #     - LOG_LEVEL=info
+  #     - AGENTFIELD_APPROVAL_WEBHOOK_SECRET=nd-approval-secret-dev
 
   dashboard:
     build:
@@ -16,9 +16,11 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3000:80"
-    depends_on:
-      - agentfield
+    # depends_on:
+    #   - agentfield
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # Kata daemon runs in its own container with a docker-managed DB volume.
   # Tasks created here are NOT visible to the host's `kata` CLI; they live in
@@ -62,7 +64,7 @@ services:
       # - ND_CURRENT_USER=${ND_CURRENT_USER}
       - KATA_SERVER=http://127.0.0.1:7878
     depends_on:
-      - agentfield
+      # - agentfield
       - kata-daemon
     restart: unless-stopped
 
@@ -97,7 +99,7 @@ services:
       - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}
       - ROBOREV_MAX_ITERATIONS=${ROBOREV_MAX_ITERATIONS:-3}
     depends_on:
-      - agentfield
+      # - agentfield
       - kata-daemon
     restart: unless-stopped
 
@@ -132,7 +134,7 @@ services:
       - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}
       - ROBOREV_MAX_ITERATIONS=${ROBOREV_MAX_ITERATIONS:-3}
     depends_on:
-      - agentfield
+      # - agentfield
       - kata-daemon
     restart: unless-stopped
 
