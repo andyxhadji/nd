@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-OPUS_PROFILE = "jftfdg2lriyw"
+OPUS_PROFILE = "mj2ayeqbysnr"
 SONNET_PROFILE = "fa9v3zo70aog"
 
 

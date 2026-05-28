@@ -29,7 +29,6 @@ def create_triage_agent(
     if ai_config is None:
         ai_config = AIConfig(
             model=config.triage_model,
-            temperature=0.3,
         )
 
     app = Agent(

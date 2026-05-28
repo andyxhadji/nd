@@ -35,7 +35,6 @@ def create_worker_agent(
     if ai_config is None:
         ai_config = AIConfig(
             model=config.worker_model,
-            temperature=0.2,
         )
 
     app = Agent(
