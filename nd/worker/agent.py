@@ -656,15 +656,15 @@ Create a detailed spec.""",
             confident: bool
 
         llm_result = await app.ai(
-            system="""You are drafting a response to a code review comment.
-Be concise and professional. Mention the commit SHA.
-End with an offer to make adjustments if needed.""",
-            user=f"""Original comment: {comment_body}
+            system="""You are helping draft a reply to a code review comment.
+Write a concise, professional message. Mention the commit SHA.
+Offer to make adjustments if needed.""",
+            user=f"""The author said: {comment_body}
 
-Files changed: {changes_made}
-Commit: {commit_sha}
+We changed these files: {changes_made}
+In this commit: {commit_sha}
 
-Draft a response.""",
+Write the message text (response_text) and indicate if you're confident the changes fully address their comment (confident: true/false).""",
             schema=ResponseDraft,
         )
 
