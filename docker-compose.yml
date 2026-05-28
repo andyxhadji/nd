@@ -59,6 +59,8 @@ services:
     command: python -m nd.worker
     env_file:
       - .env.local
+    volumes:
+      - ${ND_WORKSPACE_ROOT:-./.nd-workspace}:/var/nd
     network_mode: "service:kata-daemon"
     environment:
       - AGENTFIELD_URL=http://agentfield:8080
@@ -83,6 +85,8 @@ services:
     command: python -m nd.worker
     env_file:
       - .env.local
+    volumes:
+      - ${ND_WORKSPACE_ROOT:-./.nd-workspace}:/var/nd
     network_mode: "service:kata-daemon"
     environment:
       - AGENTFIELD_URL=http://agentfield:8080

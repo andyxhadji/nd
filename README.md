@@ -44,6 +44,7 @@ All configuration via environment variables:
 | `ND_CURRENT_USER` | (empty) | Username to filter MRs |
 | `ND_ASSIGNED_USERNAMES` | (empty) | Comma-separated usernames for `poll_issues`. If empty, `poll_issues` returns an error |
 | `WORKSPACE_ROOT` | `/var/nd` | Root directory for the worker's bare git cache (`<root>/repos/...`) and per-task worktrees (`<root>/work/...`). Ephemeral by default; mount as a docker volume to persist the cache across container restarts. |
+| `ND_WORKSPACE_ROOT` | `./.nd-workspace` | Host path mounted to `/var/nd` by Docker Compose for durable worker worktrees and bare repo cache. |
 | `WORKSPACE_KEEP_ON_FAILURE` | `true` | When a task fails or pauses, leave the worktree on disk for human inspection. Set to `0` / `false` to also clean up failed runs. |
 | `OPENROUTER_API_KEY` | (required) | OpenRouter API key (or AWS creds for Bedrock models) |
 
@@ -120,9 +121,10 @@ Behavior:
   `WORKSPACE_KEEP_ON_FAILURE=0` (or `false`) to also tear it down on
   failed/paused runs.
 
-By default `/var/nd` is ephemeral — each container restart loses both the
-bare cache and any leftover worktrees. To persist the cache, mount a
-docker volume at `/var/nd` (or whatever you set `WORKSPACE_ROOT` to).
+Docker Compose bind-mounts `${ND_WORKSPACE_ROOT:-./.nd-workspace}` to
+`/var/nd`, so paused/failed worktrees and the bare cache are inspectable
+from the host. Override `ND_WORKSPACE_ROOT` in your shell or `.env.local`
+to put this state somewhere else.
 
 ### Kata daemon for Docker
 
