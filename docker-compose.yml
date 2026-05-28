@@ -10,6 +10,16 @@ services:
       - LOG_LEVEL=info
       - AGENTFIELD_APPROVAL_WEBHOOK_SECRET=nd-approval-secret-dev
 
+  dashboard:
+    build:
+      context: ./approval-dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - agentfield
+    restart: unless-stopped
+
   # Kata daemon runs in its own container with a docker-managed DB volume.
   # Tasks created here are NOT visible to the host's `kata` CLI; they live in
   # this volume. The triage and worker services share this container's network
