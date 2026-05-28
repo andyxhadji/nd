@@ -50,11 +50,20 @@ All configuration via environment variables:
 
 ### Setting environment variables
 
-A starter template lives at `.env.example`. Copy it to `.env.local` (gitignored) and fill in real values before running anything that depends on it (including `docker compose up`, which mounts `.env.local` via `env_file:` and will fail if the file is missing):
+A starter template lives at `.env.example`. Copy it to `.env.local` (gitignored) and fill in real values before running anything that depends on it:
 
 ```bash
 cp .env.example .env.local
+# Edit .env.local and add required credentials
 ```
+
+**Required variables in `.env.local`:**
+- `GITHUB_TOKEN` or `GITLAB_TOKEN` - for posting responses to MRs/PRs
+- `ND_CURRENT_USER` - your username for filtering MR comments
+- `ND_ASSIGNED_USERNAMES` - comma-separated list for issue polling
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` - for Bedrock models
+
+**Important:** The docker-compose.yml has been configured to load AWS credentials and `ND_CURRENT_USER` from `.env.local` via `env_file`. Do NOT add these variables to the `environment:` section in docker-compose.yml, as shell variable interpolation will override the `.env.local` values with empty strings.
 
 **For local runs** (`python -m nd.triage`, `pytest`, `./test-local.sh`):
 
@@ -179,14 +188,43 @@ The worker agent pauses for human approval at three points:
 ## Docker Deployment
 
 ```bash
-# Development with all services
-docker compose up
+# First time setup
+cp .env.example .env.local
+# Edit .env.local with your credentials
 
-# Test environment
-docker compose -f docker-compose.test.yml up
+# Start all services
+docker compose up -d
 
-# Run tests in container
-docker compose -f docker-compose.test.yml run test-runner
+# Check service status
+docker compose ps
+
+# View logs
+docker compose logs triage --tail=50
+docker compose logs worker-1 --tail=50
+
+# Restart services after config changes
+docker compose down
+docker compose up -d
+
+# Or recreate specific services
+docker compose up -d --force-recreate triage worker-1 worker-2
+```
+
+### Verifying the deployment
+
+```bash
+# Check agent health
+docker compose exec triage curl -sS http://localhost:8001/health
+docker compose exec worker-1 curl -sS http://localhost:8002/health
+
+# Verify environment variables loaded
+docker compose exec triage printenv | grep -E "ND_CURRENT_USER|AWS_ACCESS_KEY_ID"
+
+# Check kata daemon
+docker compose exec kata-daemon kata projects list
+
+# Test AgentField connectivity (should show "Connected to AgentField server")
+docker compose logs triage | grep -i agentfield
 ```
 
 ## Testing
@@ -238,6 +276,74 @@ tests/
 ├── unit/                       # Unit tests
 ├── functional/                 # Functional tests
 ```
+
+## Troubleshooting
+
+### Agents can't reach AgentField
+
+**Symptoms:** Logs show "AgentField server unavailable - running in degraded mode" or "Could not resolve host: agentfield"
+
+**Causes:**
+1. Port conflict preventing agentfield from binding to port 8081
+2. agentfield container not on the Docker network
+
+**Solutions:**
+```bash
+# Check for port conflicts
+lsof -i :8081
+
+# Stop conflicting containers
+docker ps -a | grep agentfield
+docker stop <container-id>
+
+# Recreate all services
+docker compose down
+docker compose up -d
+
+# Verify agentfield network connectivity
+docker inspect fire-tortellini-agentfield-1 | grep -A 10 Networks
+docker compose exec worker-1 curl -sS http://agentfield:8080/health
+```
+
+### AWS credentials expired
+
+**Symptoms:** Logs show "The security token included in the request is expired"
+
+**Solution:**
+```bash
+# Refresh AWS credentials (example with saml2aws)
+cat ~/.aws/saml2aws_credentials | grep -A 3 "\[assumed-horizon\]"
+
+# Update .env.local with new credentials
+# Recreate workers to pick up new creds
+docker compose up -d --force-recreate worker-1 worker-2
+```
+
+### Workers not claiming tasks
+
+**Symptoms:** `claim_task` returns `{"claimed": false}` even though tasks exist
+
+**Possible causes:**
+1. Task already owned by another worker
+2. Task doesn't have `nd` label
+3. Task is in wrong project
+
+**Debug:**
+```bash
+# Check tasks
+docker compose exec kata-daemon kata list --project <project-name>
+
+# Check task labels and owner
+docker compose exec kata-daemon kata list --project <project-name> --json | python -m json.tool
+```
+
+### Task body format errors
+
+**Symptoms:** Worker fails with "Could not parse task body" or "platform_host must be non-empty"
+
+**Cause:** Task body doesn't match expected format from `KataClient.build_issue_task_body()`
+
+**Solution:** Use the triage agent's `create_issue_task` reasoner which formats tasks correctly, or manually format the task body to match the expected structure with headers like `## Issue Context`.
 
 ## License
 
