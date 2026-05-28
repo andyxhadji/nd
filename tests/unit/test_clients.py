@@ -1,0 +1,838 @@
+# tests/unit/test_clients.py
+"""Unit tests for client modules."""
+
+import json
+
+import httpx
+import pytest
+
+from nd.clients.kata import KataClient, KataTask
+from nd.clients.middleman import Issue, MiddlemanClient, MRComment
+from nd.clients.platform import PlatformClient
+
+
+class _FakeProc:
+    """Minimal stand-in for asyncio subprocess to test KataClient._run."""
+
+    def __init__(self, returncode: int, stdout: bytes = b"", stderr: bytes = b""):
+        self.returncode = returncode
+        self._stdout = stdout
+        self._stderr = stderr
+
+    async def communicate(self):
+        return self._stdout, self._stderr
+
+
+def _patch_kata_subprocess(monkeypatch, *, returncode=0, stdout=b"", stderr=b""):
+    """Patch asyncio.create_subprocess_exec to return a fake proc; return captured args."""
+    captured: dict = {}
+
+    async def fake_exec(*cmd, stdout=None, stderr=None, env=None):
+        captured["cmd"] = cmd
+        captured["env"] = env
+        return _FakeProc(
+            returncode, stdout=_patch_kata_subprocess._stdout, stderr=_patch_kata_subprocess._stderr
+        )
+
+    _patch_kata_subprocess._stdout = stdout
+    _patch_kata_subprocess._stderr = stderr
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+    return captured
+
+
+def _patch_kata_subprocess_sequence(monkeypatch, responses):
+    """Patch asyncio.create_subprocess_exec to return queued (rc, stdout) tuples.
+
+    Used by tests that exercise multi-call flows like KataClient.ready, which
+    first lists projects and then runs `kata ready --project <name>` once per
+    project. Each subprocess call pops the next response; once exhausted the
+    last response is reused.
+
+    Returns a dict with key ``cmds`` (list of captured argv tuples).
+    """
+    queue = list(responses)
+    captured: dict = {"cmds": []}
+
+    async def fake_exec(*cmd, stdout=None, stderr=None, env=None):
+        captured["cmds"].append(cmd)
+        rc, out = queue[0] if len(queue) == 1 else queue.pop(0)
+        return _FakeProc(rc, stdout=out, stderr=b"")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+    return captured
+
+
+class TestMiddlemanClient:
+    def test_parse_comment(self):
+        raw = {
+            "id": "123",
+            "body": "Please fix this",
+            "author": "reviewer",
+            "created_at": "2026-05-27T10:00:00Z",
+            "dedupe_key": "gitlab:gitlab.com:org/repo:mr:42:note:123",
+            "mr_number": 42,
+            "mr_title": "Add feature",
+            "mr_url": "https://gitlab.com/org/repo/-/merge_requests/42",
+            "head_branch": "feature",
+            "base_branch": "main",
+            "platform": "gitlab",
+            "platform_host": "gitlab.com",
+            "repo_owner": "org",
+            "repo_name": "repo",
+        }
+        comment = MRComment.from_dict(raw)
+        assert comment.body == "Please fix this"
+        assert comment.mr_number == 42
+        assert comment.platform == "gitlab"
+
+    @pytest.mark.asyncio
+    async def test_client_initialization(self):
+        client = MiddlemanClient(base_url="http://localhost:8091")
+        assert client.base_url == "http://localhost:8091"
+
+    @pytest.mark.asyncio
+    async def test_get_issues_assigned_to_handles_bare_array(self):
+        """Middleman /api/v1/issues returns a bare JSON array, not {"items": [...]}."""
+        raw_issue = {
+            "id": "456",
+            "number": 123,
+            "title": "Bug report",
+            "body": "Something is broken",
+            "state": "open",
+            "author": "reporter",
+            "assignees": ["andyxhadji"],
+            "url": "https://github.com/org/repo/issues/123",
+            "created_at": "2026-05-27T10:00:00Z",
+            "updated_at": "2026-05-27T11:00:00Z",
+            "platform": "github",
+            "platform_host": "github.com",
+            "repo_owner": "org",
+            "repo_name": "repo",
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=[raw_issue])
+
+        client = MiddlemanClient(base_url="http://middleman")
+        client._client = httpx.AsyncClient(
+            base_url="http://middleman",
+            transport=httpx.MockTransport(handler),
+        )
+
+        issues = await client.get_issues_assigned_to("andyxhadji")
+        assert len(issues) == 1
+        assert issues[0].number == 123
+        assert issues[0].assignees == ["andyxhadji"]
+
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_get_issues_assigned_to_handles_wrapped_object(self):
+        """Backwards-compat: also handle {"items": [...]} shape if returned."""
+        raw_issue = {
+            "id": "456",
+            "number": 123,
+            "title": "Bug report",
+            "body": "Something is broken",
+            "state": "open",
+            "author": "reporter",
+            "assignees": ["andyxhadji"],
+            "url": "https://github.com/org/repo/issues/123",
+            "created_at": "2026-05-27T10:00:00Z",
+            "updated_at": "2026-05-27T11:00:00Z",
+            "platform": "github",
+            "platform_host": "github.com",
+            "repo_owner": "org",
+            "repo_name": "repo",
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"items": [raw_issue]})
+
+        client = MiddlemanClient(base_url="http://middleman")
+        client._client = httpx.AsyncClient(
+            base_url="http://middleman",
+            transport=httpx.MockTransport(handler),
+        )
+
+        issues = await client.get_issues_assigned_to("andyxhadji")
+        assert len(issues) == 1
+        assert issues[0].number == 123
+
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_get_issues_assigned_to_empty_array(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=[])
+
+        client = MiddlemanClient(base_url="http://middleman")
+        client._client = httpx.AsyncClient(
+            base_url="http://middleman",
+            transport=httpx.MockTransport(handler),
+        )
+
+        issues = await client.get_issues_assigned_to("andyxhadji")
+        assert issues == []
+
+        await client.close()
+
+    def test_parse_issue(self):
+        raw = {
+            "id": "456",
+            "number": 123,
+            "title": "Bug report",
+            "body": "Something is broken",
+            "state": "open",
+            "author": "reporter",
+            "assignees": ["user1", "user2"],
+            "url": "https://github.com/org/repo/issues/123",
+            "created_at": "2026-05-27T10:00:00Z",
+            "updated_at": "2026-05-27T11:00:00Z",
+            "platform": "github",
+            "platform_host": "github.com",
+            "repo_owner": "org",
+            "repo_name": "repo",
+        }
+        issue = Issue.from_dict(raw)
+        assert issue.number == 123
+        assert issue.title == "Bug report"
+        assert issue.assignees == ["user1", "user2"]
+        assert issue.platform == "github"
+
+    def test_parse_issue_middleman_shape(self):
+        """Real middleman /api/v1/issues response uses PascalCase top-level keys
+        and nests platform info under 'repo'."""
+        raw = {
+            "ID": 5894,
+            "Number": 11,
+            "Title": "Bug: blank board preview",
+            "Author": "andyxhadji",
+            "State": "open",
+            "Body": "When I open the UI, the board preview is blank.",
+            "URL": "https://github.com/andyxhadji/sweets/issues/11",
+            "CreatedAt": "2026-05-27T18:15:43Z",
+            "UpdatedAt": "2026-05-27T18:15:45Z",
+            "ClosedAt": None,
+            "assignees": ["andyxhadji"],
+            "repo": {
+                "provider": "github",
+                "platform_host": "github.com",
+                "owner": "andyxhadji",
+                "name": "sweets",
+            },
+            "platform_host": "github.com",
+            "repo_owner": "andyxhadji",
+            "repo_name": "sweets",
+        }
+        issue = Issue.from_dict(raw)
+        assert issue.id == "5894"
+        assert issue.number == 11
+        assert issue.title == "Bug: blank board preview"
+        assert issue.body == "When I open the UI, the board preview is blank."
+        assert issue.author == "andyxhadji"
+        assert issue.state == "open"
+        assert issue.assignees == ["andyxhadji"]
+        assert issue.url == "https://github.com/andyxhadji/sweets/issues/11"
+        assert issue.platform == "github"
+        assert issue.platform_host == "github.com"
+        assert issue.repo_owner == "andyxhadji"
+        assert issue.repo_name == "sweets"
+        assert issue.created_at.year == 2026
+
+
+class TestKataClient:
+    def test_parse_task(self):
+        # Mirrors kata's actual issue JSON shape (see internal/api responses):
+        # uid is the canonical identifier, project_name/labels/owner may be
+        # absent in some response paths (e.g. search results omit labels).
+        # When both project_name and short_id are present, KataTask.id is the
+        # qualified ref (project#short_id) — required for downstream kata
+        # commands that need a project-scoped reference.
+        raw = {
+            "id": 42,
+            "uid": "01KSNQYBPY6R0CB7KGH9MDA4CN",
+            "short_id": "a4cn",
+            "project_id": 7,
+            "project_name": "testrepo",
+            "title": "Fix bug",
+            "body": "## MR Context\n...",
+            "labels": ["from-mr", "nd"],
+            "owner": None,
+        }
+        task = KataTask.from_dict(raw)
+        assert task.id == "testrepo#a4cn"
+        assert task.project == "testrepo"
+        assert "nd" in task.labels
+
+    def test_parse_task_falls_back_to_uid_when_no_short_id(self):
+        # Search results sometimes omit short_id; fall back to uid.
+        raw = {"uid": "01KSNQYBPY6R0CB7KGH9MDA4CN", "project_name": "p", "title": "t"}
+        task = KataTask.from_dict(raw)
+        assert task.id == "01KSNQYBPY6R0CB7KGH9MDA4CN"
+        assert task.project == "p"
+
+    def test_parse_task_uses_explicit_project_arg(self):
+        # `kata ready --project P --json` returns issues that don't embed
+        # project_name, so callers thread the project name through.
+        raw = {"short_id": "a4cn", "title": "t"}
+        task = KataTask.from_dict(raw, project="testrepo")
+        assert task.id == "testrepo#a4cn"
+        assert task.project == "testrepo"
+
+    def test_build_task_body(self):
+        body = KataClient.build_task_body(
+            mr_url="https://gitlab.com/org/repo/-/merge_requests/42",
+            mr_title="Add feature",
+            head_branch="feature",
+            base_branch="main",
+            platform="gitlab",
+            platform_host="gitlab.com",
+            repo_owner="org",
+            repo_name="repo",
+            mr_number=42,
+            comment_author="reviewer",
+            comment_body="Please fix this",
+            dedupe_key="gitlab:gitlab.com:org/repo:mr:42:note:123",
+            category="request",
+        )
+        assert "## MR Context" in body
+        assert "org/repo!42" in body
+        assert "Please fix this" in body
+
+    def test_build_issue_task_body(self):
+        body = KataClient.build_issue_task_body(
+            issue_url="https://github.com/org/repo/issues/123",
+            issue_title="Bug report",
+            issue_number=123,
+            platform="github",
+            platform_host="github.com",
+            repo_owner="org",
+            repo_name="repo",
+            issue_author="reporter",
+            issue_body="Something is broken",
+            assignees=["user1", "user2"],
+        )
+        assert "## Issue Context" in body
+        assert "org/repo#123" in body
+        assert "Something is broken" in body
+        assert "user1, user2" in body
+
+
+class TestKataClientAsync:
+    def test_base_cmd_no_server(self):
+        client = KataClient()
+        assert client._base_cmd() == ["kata"]
+
+    def test_base_cmd_omits_server_flag(self):
+        # kata CLI has no --server flag; server is selected via KATA_SERVER env.
+        client = KataClient(kata_server="unix:///run/kata/daemon.sock")
+        assert client._base_cmd() == ["kata"]
+
+    def test_env_sets_kata_server_when_configured(self):
+        client = KataClient(kata_server="unix:///run/kata/daemon.sock")
+        assert client._env()["KATA_SERVER"] == "unix:///run/kata/daemon.sock"
+
+    def test_env_omits_kata_server_when_unset(self, monkeypatch):
+        monkeypatch.delenv("KATA_SERVER", raising=False)
+        client = KataClient()
+        assert "KATA_SERVER" not in client._env()
+
+    @pytest.mark.asyncio
+    async def test_run_captures_command_and_output(self, monkeypatch):
+        captured = _patch_kata_subprocess(
+            monkeypatch, returncode=0, stdout=b"hello", stderr=b"warn"
+        )
+        client = KataClient(kata_server="unix:///run/kata/daemon.sock")
+        rc, out, err = await client._run(["search", "x"])
+        assert rc == 0
+        assert out == "hello"
+        assert err == "warn"
+        assert captured["cmd"] == ("kata", "search", "x")
+        assert captured["env"]["KATA_SERVER"] == "unix:///run/kata/daemon.sock"
+
+    @pytest.mark.asyncio
+    async def test_search_returns_tasks(self, monkeypatch):
+        # Real kata search response: {"results": [{"issue": {...}, "score":
+        # ..., "matched_in": [...]}, ...]}. Search results don't include
+        # "labels", so the parsed KataTask.labels is [].
+        payload = {
+            "kata_api_version": 1,
+            "query": "query",
+            "results": [
+                {
+                    "issue": {
+                        "id": 1,
+                        "uid": "t1",
+                        "project_id": 7,
+                        "project_name": "p",
+                        "title": "T1",
+                    },
+                    "score": 0.5,
+                    "matched_in": ["title"],
+                },
+                {
+                    "issue": {
+                        "id": 2,
+                        "uid": "t2",
+                        "project_id": 7,
+                        "project_name": "p",
+                        "title": "T2",
+                    },
+                    "score": 0.4,
+                    "matched_in": ["title"],
+                },
+            ],
+        }
+        _patch_kata_subprocess(monkeypatch, returncode=0, stdout=json.dumps(payload).encode())
+        tasks = await KataClient().search("p", "query")
+        assert [t.id for t in tasks] == ["t1", "t2"]
+        assert tasks[0].labels == []
+        assert tasks[1].labels == []
+
+    @pytest.mark.asyncio
+    async def test_search_returns_empty_on_failure(self, monkeypatch):
+        _patch_kata_subprocess(monkeypatch, returncode=1)
+        assert await KataClient().search("p", "q") == []
+
+    @pytest.mark.asyncio
+    async def test_search_returns_empty_on_invalid_json(self, monkeypatch):
+        _patch_kata_subprocess(monkeypatch, returncode=0, stdout=b"not-json")
+        assert await KataClient().search("p", "q") == []
+
+    @pytest.mark.asyncio
+    async def test_create_passes_labels_and_returns_id(self, monkeypatch):
+        # kata's actual create response wraps the issue and does not embed
+        # project_name on the row. We return a qualified ref by joining the
+        # project we just passed to --project with the returned short_id, so
+        # downstream commands (assign/label/comment/close) can resolve the
+        # ref without a project context.
+        stdout = json.dumps(
+            {
+                "kata_api_version": 1,
+                "issue": {
+                    "id": 1,
+                    "uid": "new-task",
+                    "short_id": "abcd",
+                    "project_id": 7,
+                    "title": "t",
+                },
+                "changed": True,
+            }
+        ).encode()
+        captured = _patch_kata_subprocess(monkeypatch, returncode=0, stdout=stdout)
+        task_id = await KataClient().create(
+            title="t",
+            body="b",
+            project="p",
+            labels=["a", "b"],
+            idempotency_key="key1",
+        )
+        assert task_id == "p#abcd"
+        cmd = list(captured["cmd"])
+        assert "--label" in cmd
+        # Two --label entries for two labels
+        assert cmd.count("--label") == 2
+        assert "--idempotency-key" in cmd
+
+    @pytest.mark.asyncio
+    async def test_create_returns_none_on_failure(self, monkeypatch):
+        _patch_kata_subprocess(monkeypatch, returncode=1)
+        result = await KataClient().create(
+            title="t", body="b", project="p", labels=[], idempotency_key="k"
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_create_returns_none_on_invalid_json(self, monkeypatch):
+        _patch_kata_subprocess(monkeypatch, returncode=0, stdout=b"not-json")
+        result = await KataClient().create(
+            title="t", body="b", project="p", labels=[], idempotency_key="k"
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_ready_iterates_projects_and_returns_qualified_refs(self, monkeypatch):
+        # `kata ready` is project-scoped; KataClient.ready first lists
+        # projects then runs `kata ready --project <name>` per project.
+        # Per-project responses use key "issues" (not "tasks") and rows do
+        # not embed project_name, so the project is threaded through and
+        # each task.id is the qualified ref `<project>#<short_id>`.
+        projects_payload = json.dumps(
+            {
+                "kata_api_version": 1,
+                "projects": [{"name": "alpha"}, {"name": "beta"}],
+            }
+        ).encode()
+        alpha_ready = json.dumps(
+            {"kata_api_version": 1, "issues": [{"short_id": "a4cn", "title": "A"}]}
+        ).encode()
+        beta_ready = json.dumps(
+            {"kata_api_version": 1, "issues": [{"short_id": "7by6", "title": "B"}]}
+        ).encode()
+        captured = _patch_kata_subprocess_sequence(
+            monkeypatch,
+            [
+                (0, projects_payload),
+                (0, alpha_ready),
+                (0, beta_ready),
+            ],
+        )
+        tasks = await KataClient().ready(label="nd", unowned=True)
+        assert sorted(t.id for t in tasks) == ["alpha#a4cn", "beta#7by6"]
+        # Three subprocess calls: projects list + per-project ready
+        assert len(captured["cmds"]) == 3
+        # --unowned threads through to each per-project ready call
+        assert all("--unowned" in cmd for cmd in captured["cmds"][1:])
+        # Each per-project ready command is scoped via --project
+        assert ("--project", "alpha") == (
+            captured["cmds"][1][captured["cmds"][1].index("--project")],
+            captured["cmds"][1][captured["cmds"][1].index("--project") + 1],
+        )
+
+    @pytest.mark.asyncio
+    async def test_ready_omits_unowned_when_false(self, monkeypatch):
+        projects_payload = json.dumps({"kata_api_version": 1, "projects": [{"name": "p"}]}).encode()
+        empty_ready = json.dumps({"kata_api_version": 1, "issues": []}).encode()
+        captured = _patch_kata_subprocess_sequence(
+            monkeypatch, [(0, projects_payload), (0, empty_ready)]
+        )
+        await KataClient().ready(label="nd", unowned=False)
+        # The per-project ready call must not include --unowned
+        assert "--unowned" not in captured["cmds"][1]
+
+    @pytest.mark.asyncio
+    async def test_ready_handles_null_issues(self, monkeypatch):
+        projects_payload = json.dumps({"kata_api_version": 1, "projects": [{"name": "p"}]}).encode()
+        null_ready = json.dumps({"kata_api_version": 1, "issues": None}).encode()
+        _patch_kata_subprocess_sequence(monkeypatch, [(0, projects_payload), (0, null_ready)])
+        assert await KataClient().ready(label="nd") == []
+
+    @pytest.mark.asyncio
+    async def test_list_projects_handles_null_projects(self, monkeypatch):
+        projects_payload = json.dumps({"kata_api_version": 1, "projects": None}).encode()
+        _patch_kata_subprocess_sequence(monkeypatch, [(0, projects_payload)])
+        assert await KataClient().list_projects() == []
+
+    @pytest.mark.asyncio
+    async def test_ready_returns_empty_when_projects_list_fails(self, monkeypatch):
+        # If we cannot enumerate projects we have nothing to query.
+        _patch_kata_subprocess_sequence(monkeypatch, [(1, b"")])
+        assert await KataClient().ready(label="nd") == []
+
+    @pytest.mark.asyncio
+    async def test_ready_skips_projects_that_error(self, monkeypatch):
+        # A failure for one project must not abort the rest.
+        projects_payload = json.dumps(
+            {"kata_api_version": 1, "projects": [{"name": "alpha"}, {"name": "beta"}]}
+        ).encode()
+        beta_ready = json.dumps(
+            {"kata_api_version": 1, "issues": [{"short_id": "7by6", "title": "B"}]}
+        ).encode()
+        _patch_kata_subprocess_sequence(
+            monkeypatch,
+            [
+                (0, projects_payload),
+                (4, b""),  # alpha fails
+                (0, beta_ready),
+            ],
+        )
+        tasks = await KataClient().ready(label="nd")
+        assert [t.id for t in tasks] == ["beta#7by6"]
+
+    @pytest.mark.asyncio
+    async def test_ready_skips_projects_with_invalid_json(self, monkeypatch):
+        projects_payload = json.dumps(
+            {"kata_api_version": 1, "projects": [{"name": "alpha"}]}
+        ).encode()
+        _patch_kata_subprocess_sequence(monkeypatch, [(0, projects_payload), (0, b"not-json")])
+        assert await KataClient().ready(label="nd") == []
+
+    @pytest.mark.asyncio
+    async def test_assign_label_comment_close_truthiness(self, monkeypatch):
+        _patch_kata_subprocess(monkeypatch, returncode=0)
+        client = KataClient()
+        assert await client.assign("t1", "alice") is True
+        assert await client.label("t1", "x") is True
+        assert await client.comment("t1", "msg") is True
+        assert await client.close("t1", "done", "ok") is True
+
+        _patch_kata_subprocess(monkeypatch, returncode=2)
+        assert await client.assign("t1", "alice") is False
+        assert await client.label("t1", "x") is False
+        assert await client.comment("t1", "msg") is False
+        assert await client.close("t1", "done", "ok") is False
+
+
+class TestPlatformClient:
+    def test_gitlab_comment_url(self):
+        client = PlatformClient(
+            github_token="",
+            gitlab_token="test-token",
+        )
+        url = client._gitlab_comment_url(
+            host="gitlab.com",
+            owner="org",
+            repo="repo",
+            mr_number=42,
+            discussion_id="abc123",
+        )
+        assert "gitlab.com" in url
+        assert "merge_requests/42" in url
+        assert "discussions/abc123" in url
+
+    def test_github_comment_url(self):
+        client = PlatformClient(
+            github_token="test-token",
+            gitlab_token="",
+        )
+        url = client._github_comment_url(
+            owner="org",
+            repo="repo",
+            pr_number=42,
+            comment_id=12345,
+        )
+        assert "api.github.com" in url
+        assert "pulls/42" in url
+        assert "12345" in url
+
+    def test_url_escapes_special_characters(self):
+        client = PlatformClient(github_token="", gitlab_token="")
+        url = client._gitlab_comment_url(
+            host="gitlab.com",
+            owner="my org",
+            repo="my repo",
+            mr_number=1,
+            discussion_id="d/1",
+        )
+        # `quote` with safe="" must percent-encode '/'
+        assert "my%20org%2Fmy%20repo" in url
+
+
+class TestPlatformClientAsync:
+    @pytest.mark.asyncio
+    async def test_post_github_reply_success(self, monkeypatch):
+        calls: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            return httpx.Response(201, json={"id": 1})
+
+        client = PlatformClient(github_token="gh", gitlab_token="")
+        client._github_client = httpx.AsyncClient(
+            base_url="https://api.github.com",
+            transport=httpx.MockTransport(handler),
+        )
+
+        result = await client.post_github_reply(
+            owner="o", repo="r", pr_number=10, comment_id=99, body="hello"
+        )
+        assert result is True
+        assert len(calls) == 1
+        assert calls[0].url.path == "/repos/o/r/pulls/10/comments/99/replies"
+        assert json.loads(calls[0].content) == {"body": "hello"}
+
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_post_github_reply_failure(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, json={"message": "not found"})
+
+        client = PlatformClient(github_token="gh", gitlab_token="")
+        client._github_client = httpx.AsyncClient(
+            base_url="https://api.github.com",
+            transport=httpx.MockTransport(handler),
+        )
+
+        result = await client.post_github_reply(
+            owner="o", repo="r", pr_number=10, comment_id=99, body="hello"
+        )
+        assert result is False
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_post_gitlab_reply_success(self):
+        calls: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            return httpx.Response(201, json={"id": 1})
+
+        client = PlatformClient(github_token="", gitlab_token="gl")
+        client._gitlab_client = httpx.AsyncClient(
+            base_url="https://gitlab.example.com",
+            transport=httpx.MockTransport(handler),
+        )
+
+        result = await client.post_gitlab_reply(
+            host="gitlab.example.com",
+            owner="o",
+            repo="r",
+            mr_number=42,
+            discussion_id="d1",
+            body="reply",
+        )
+        assert result is True
+        assert len(calls) == 1
+        assert "merge_requests/42/discussions/d1/notes" in calls[0].url.path
+        assert json.loads(calls[0].content) == {"body": "reply"}
+
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_post_response_dispatches_gitlab(self, monkeypatch):
+        client = PlatformClient(github_token="", gitlab_token="gl")
+        called: dict = {}
+
+        async def fake_gitlab(**kwargs):
+            called.update(kwargs)
+            return True
+
+        monkeypatch.setattr(client, "post_gitlab_reply", fake_gitlab)
+
+        result = await client.post_response(
+            platform="gitlab",
+            platform_host="gitlab.com",
+            owner="o",
+            repo="r",
+            mr_number=1,
+            thread_id="d-abc",
+            body="b",
+        )
+        assert result is True
+        assert called["discussion_id"] == "d-abc"
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_post_response_dispatches_github(self, monkeypatch):
+        client = PlatformClient(github_token="gh", gitlab_token="")
+        called: dict = {}
+
+        async def fake_github(**kwargs):
+            called.update(kwargs)
+            return True
+
+        monkeypatch.setattr(client, "post_github_reply", fake_github)
+
+        result = await client.post_response(
+            platform="github",
+            platform_host="github.com",
+            owner="o",
+            repo="r",
+            mr_number=1,
+            thread_id="12345",
+            body="b",
+        )
+        assert result is True
+        assert called["comment_id"] == 12345
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_post_response_github_rejects_non_numeric_thread_id(self):
+        client = PlatformClient(github_token="gh", gitlab_token="")
+        with pytest.raises(ValueError, match="must be numeric"):
+            await client.post_response(
+                platform="github",
+                platform_host="github.com",
+                owner="o",
+                repo="r",
+                mr_number=1,
+                thread_id="not-a-number",
+                body="b",
+            )
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_post_response_unsupported_platform(self):
+        client = PlatformClient(github_token="", gitlab_token="")
+        with pytest.raises(ValueError, match="Unsupported platform"):
+            await client.post_response(
+                platform="bitbucket",
+                platform_host="bitbucket.org",
+                owner="o",
+                repo="r",
+                mr_number=1,
+                thread_id="1",
+                body="b",
+            )
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_close_idempotent_without_init(self):
+        # Calling close before any client was lazily created must not error
+        client = PlatformClient(github_token="", gitlab_token="")
+        await client.close()
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_create_gitlab_merge_request_success(self):
+        calls: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            return httpx.Response(
+                201, json={"web_url": "https://gitlab.example.com/o/r/-/merge_requests/9"}
+            )
+
+        client = PlatformClient(github_token="", gitlab_token="gl")
+        client._gitlab_client = httpx.AsyncClient(
+            base_url="https://gitlab.example.com",
+            transport=httpx.MockTransport(handler),
+        )
+
+        url = await client.create_merge_request(
+            platform="gitlab",
+            platform_host="gitlab.example.com",
+            owner="o",
+            repo="r",
+            source_branch="nd/issue-0007",
+            target_branch="main",
+            title="Fix parser",
+            body="Addresses issue 7",
+        )
+
+        assert url == "https://gitlab.example.com/o/r/-/merge_requests/9"
+        assert calls[0].url.raw_path == b"/api/v4/projects/o%2Fr/merge_requests"
+        assert json.loads(calls[0].content) == {
+            "source_branch": "nd/issue-0007",
+            "target_branch": "main",
+            "title": "Fix parser",
+            "description": "Addresses issue 7",
+        }
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_create_github_pull_request_success(self):
+        calls: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            return httpx.Response(201, json={"html_url": "https://github.com/o/r/pull/9"})
+
+        client = PlatformClient(github_token="gh", gitlab_token="")
+        client._github_client = httpx.AsyncClient(
+            base_url="https://api.github.com",
+            transport=httpx.MockTransport(handler),
+        )
+
+        url = await client.create_merge_request(
+            platform="github",
+            platform_host="github.com",
+            owner="o",
+            repo="r",
+            source_branch="nd/issue-0007",
+            target_branch="main",
+            title="Fix parser",
+            body="Addresses issue 7",
+        )
+
+        assert url == "https://github.com/o/r/pull/9"
+        assert calls[0].url.path == "/repos/o/r/pulls"
+        assert json.loads(calls[0].content) == {
+            "head": "nd/issue-0007",
+            "base": "main",
+            "title": "Fix parser",
+            "body": "Addresses issue 7",
+        }
+        await client.close()

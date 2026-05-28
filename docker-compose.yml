@@ -1,0 +1,127 @@
+services:
+  agentfield:
+    image: agentfield/control-plane:latest
+    ports:
+      - "8081:8080"
+    volumes:
+      - agentfield-data:/data
+    environment:
+      - DATABASE_URL=sqlite:///data/agentfield.db
+      - LOG_LEVEL=info
+
+  # Kata daemon runs in its own container with a docker-managed DB volume.
+  # Tasks created here are NOT visible to the host's `kata` CLI; they live in
+  # this volume. The triage and worker services share this container's network
+  # namespace (network_mode: "service:kata-daemon") so they reach the daemon
+  # on 127.0.0.1, satisfying kata's loopback-only auth posture (see
+  # internal/daemon/auth.go's checkAuthStartup: non-loopback TCP without
+  # --insecure-readonly is refused at startup).
+  #
+  # Because all four containers share one network namespace, agents are
+  # addressed as `kata-daemon:<AGENT_PORT>` from the rest of the network.
+  # Each agent uses a distinct AGENT_PORT to avoid in-namespace collisions.
+  kata-daemon:
+    build: .
+    entrypoint: []
+    command: ["kata", "daemon", "start", "--listen", "127.0.0.1:7878"]
+    environment:
+      - KATA_HOME=/kata-home
+      - KATA_DB=/kata-home/kata.db
+    volumes:
+      - kata-data:/kata-home
+    restart: unless-stopped
+
+  triage:
+    build: .
+    command: python -m nd.triage
+    env_file:
+      - .env.local
+    network_mode: "service:kata-daemon"
+    environment:
+      - AGENTFIELD_URL=http://agentfield:8080
+      - AGENT_PORT=8001
+      - AGENT_CALLBACK_URL=http://kata-daemon:8001
+      - MIDDLEMAN_URL=http://host.docker.internal:8091
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      - TRIAGE_MODEL=${TRIAGE_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - ND_CURRENT_USER=${ND_CURRENT_USER}
+      - KATA_SERVER=http://127.0.0.1:7878
+    depends_on:
+      - agentfield
+      - kata-daemon
+    restart: unless-stopped
+
+  worker-1:
+    build: .
+    command: python -m nd.worker
+    env_file:
+      - .env.local
+    volumes:
+      - ${ND_WORKSPACE_ROOT:-./.nd-workspace}:/var/nd
+      - ${HOME}/.claude:/root/.claude
+      - ${HOME}/.claude.json:/root/.claude.json
+    network_mode: "service:kata-daemon"
+    environment:
+      - AGENTFIELD_URL=http://agentfield:8080
+      - AGENT_PORT=8002
+      - AGENT_CALLBACK_URL=http://kata-daemon:8002
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      - WORKER_MODEL=${WORKER_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-1}
+      - ANTHROPIC_MODEL=${CLAUDE_CODE_MODEL:-arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - ANTHROPIC_SMALL_FAST_MODEL=${CLAUDE_CODE_SMALL_FAST_MODEL:-arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - CLAUDE_CODE_MAX_OUTPUT_TOKENS=${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-4096}
+      - MAX_THINKING_TOKENS=${MAX_THINKING_TOKENS:-1024}
+      - AGENT_INSTANCE_ID=worker-1
+      - KATA_SERVER=http://127.0.0.1:7878
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}
+      - ROBOREV_MAX_ITERATIONS=${ROBOREV_MAX_ITERATIONS:-3}
+    depends_on:
+      - agentfield
+      - kata-daemon
+    restart: unless-stopped
+
+  worker-2:
+    build: .
+    command: python -m nd.worker
+    env_file:
+      - .env.local
+    volumes:
+      - ${ND_WORKSPACE_ROOT:-./.nd-workspace}:/var/nd
+      - ${HOME}/.claude:/root/.claude
+      - ${HOME}/.claude.json:/root/.claude.json
+    network_mode: "service:kata-daemon"
+    environment:
+      - AGENTFIELD_URL=http://agentfield:8080
+      - AGENT_PORT=8003
+      - AGENT_CALLBACK_URL=http://kata-daemon:8003
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      - WORKER_MODEL=${WORKER_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-1}
+      - ANTHROPIC_MODEL=${CLAUDE_CODE_MODEL:-arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - ANTHROPIC_SMALL_FAST_MODEL=${CLAUDE_CODE_SMALL_FAST_MODEL:-arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - CLAUDE_CODE_MAX_OUTPUT_TOKENS=${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-4096}
+      - MAX_THINKING_TOKENS=${MAX_THINKING_TOKENS:-1024}
+      - AGENT_INSTANCE_ID=worker-2
+      - KATA_SERVER=http://127.0.0.1:7878
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}
+      - ROBOREV_MAX_ITERATIONS=${ROBOREV_MAX_ITERATIONS:-3}
+    depends_on:
+      - agentfield
+      - kata-daemon
+    restart: unless-stopped
+
+volumes:
+  agentfield-data:
+  kata-data:
