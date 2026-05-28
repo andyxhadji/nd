@@ -130,10 +130,14 @@ If agents show "running in degraded mode" or "Could not resolve host: agentfield
 - Verify agentfield container is on the Docker network
 - Run: `docker compose down && docker compose up -d`
 
-### AWS Credentials Expired
-If you see "security token included in the request is expired":
-- Update `.env.local` with fresh credentials from `~/.aws/saml2aws_credentials`
+### AWS Credentials Expired or Wrong Role
+If you see "security token included in the request is expired" or "not authorized to perform: bedrock:InvokeModel ... with an explicit deny":
+- **Root cause**: The `horizon` role (from saml2aws) may lack Bedrock permissions. Use `horizon-okta` role instead (from AWS SSO).
+- Get credentials: `aws configure export-credentials --format env-no-export`
+- Check role: `aws sts get-caller-identity` (look for `horizon-okta` not `horizon`)
+- Update `.env.local` with credentials that have `bedrock:InvokeModel` permissions
 - Recreate workers: `docker compose up -d --force-recreate worker-1 worker-2`
+- Verify: Test Bedrock access inside worker container (see README.md troubleshooting section)
 
 ### Worktree Already Exists
 If workspace prep fails with "worktree path ... already exists":

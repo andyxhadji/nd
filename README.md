@@ -65,6 +65,27 @@ cp .env.example .env.local
 
 **Important:** The docker-compose.yml has been configured to load AWS credentials and `ND_CURRENT_USER` from `.env.local` via `env_file`. Do NOT add these variables to the `environment:` section in docker-compose.yml, as shell variable interpolation will override the `.env.local` values with empty strings.
 
+#### AWS Credentials for Bedrock
+
+When using Bedrock models, you need AWS credentials with `bedrock:InvokeModel` permissions. The required AWS role depends on your organization's IAM configuration:
+
+- **`horizon-okta` role** (recommended): Has Bedrock permissions. Credentials are typically available via `aws configure export-credentials` when logged in through AWS SSO/Okta.
+- **`horizon` role** (from saml2aws): May have an explicit deny policy for Bedrock. If you see errors like `is not authorized to perform: bedrock:InvokeModel ... with an explicit deny in an identity-based policy`, you're using the wrong role.
+
+To get working credentials:
+
+```bash
+# If using AWS SSO/Okta (horizon-okta role):
+aws configure export-credentials --format env-no-export
+
+# Copy the output to .env.local:
+# AWS_ACCESS_KEY_ID=ASIAZR676OGX...
+# AWS_SECRET_ACCESS_KEY=...
+# AWS_SESSION_TOKEN=...
+```
+
+If `aws configure export-credentials` doesn't work, check `~/.aws/credentials` or contact your AWS administrator to ensure your role has `bedrock:InvokeModel` permissions for the inference profile ARN configured in `WORKER_MODEL`.
+
 **For local runs** (`python -m nd.triage`, `pytest`, `./test-local.sh`):
 
 Source `.env.local` before running, or use `./test-local.sh` which loads it automatically:
@@ -305,18 +326,42 @@ docker inspect fire-tortellini-agentfield-1 | grep -A 10 Networks
 docker compose exec worker-1 curl -sS http://agentfield:8080/health
 ```
 
-### AWS credentials expired
+### AWS credentials expired or wrong role
 
-**Symptoms:** Logs show "The security token included in the request is expired"
+**Symptoms:**
+- "The security token included in the request is expired"
+- "User: arn:aws:sts::657062785455:assumed-role/horizon/... is not authorized to perform: bedrock:InvokeModel ... with an explicit deny in an identity-based policy"
+
+**Root cause:** The `horizon` role (from saml2aws) may lack Bedrock permissions, while `horizon-okta` role (from AWS SSO) has them.
 
 **Solution:**
 ```bash
-# Refresh AWS credentials (example with saml2aws)
-cat ~/.aws/saml2aws_credentials | grep -A 3 "\[assumed-horizon\]"
+# Option 1: Use horizon-okta credentials (recommended)
+aws configure export-credentials --format env-no-export
+# Copy AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN to .env.local
 
-# Update .env.local with new credentials
-# Recreate workers to pick up new creds
+# Option 2: If using saml2aws, check which role has Bedrock access
+aws sts get-caller-identity  # Check current role
+# Look for "assumed-role/horizon-okta" (good) vs "assumed-role/horizon" (may be denied)
+
+# After updating .env.local, recreate workers
 docker compose up -d --force-recreate worker-1 worker-2
+
+# Verify Bedrock access works
+docker compose exec worker-1 python -c "
+import boto3, os
+client = boto3.Session(
+    aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+    aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+    aws_session_token=os.environ['AWS_SESSION_TOKEN'],
+    region_name='us-east-1'
+).client('bedrock-runtime')
+response = client.invoke_model(
+    modelId='arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr',
+    body='{\"anthropic_version\":\"bedrock-2023-05-31\",\"max_tokens\":10,\"messages\":[{\"role\":\"user\",\"content\":\"test\"}]}'
+)
+print('✓ Bedrock access verified')
+"
 ```
 
 ### Workers not claiming tasks
