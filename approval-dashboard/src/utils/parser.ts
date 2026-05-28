@@ -1,5 +1,4 @@
 import {
-  AgentFieldRun,
   ApprovalContext,
   ApprovalType,
   SpecReviewContext,
@@ -8,14 +7,16 @@ import {
 } from '../api/types';
 
 /**
- * Parse AgentField execution trace to extract approval context.
+ * Parse AgentField execution details to extract approval context.
+ * The data structure comes from /api/ui/v1/executions/{id}/details
  */
-export function parseApprovalContext(run: AgentFieldRun): ApprovalContext | null {
-  if (!run.pauseContext) {
+export function parseApprovalContext(data: any): ApprovalContext | null {
+  const approval_request_id = data.approval_request_id;
+  const approval_request_url = data.approval_request_url;
+
+  if (!approval_request_id) {
     return null;
   }
-
-  const { approval_request_id, approval_request_url, expires_in_hours } = run.pauseContext;
 
   // Extract approval type and task ID from request ID
   // Format: "spec-{taskId}" | "roborev-{taskId}" | "post-{taskId}"
@@ -28,14 +29,15 @@ export function parseApprovalContext(run: AgentFieldRun): ApprovalContext | null
   const approvalType = match[1] as ApprovalType;
   const taskId = match[2];
 
-  // Calculate expiration
-  const expiresAt = new Date(new Date(run.started_at).getTime() + expires_in_hours * 3600 * 1000);
+  // Calculate expiration (72 hours from approval request time)
+  const requestedAt = data.approval_requested_at || data.started_at;
+  const expiresAt = new Date(new Date(requestedAt).getTime() + 72 * 3600 * 1000);
 
-  // Extract common context from process_task input
-  const processTaskCall = run.trace?.find((call) => call.name.endsWith('.process_task'));
-  const taskTitle = (processTaskCall?.input.title as string) || 'Unknown Task';
-  const projectName = (processTaskCall?.input.project as string) || 'Unknown Project';
-  const taskBody = (processTaskCall?.input.body as string) || '';
+  // Extract task context from input_data (process_task input)
+  const input = data.input_data || {};
+  const taskTitle = input.title || 'Unknown Task';
+  const projectName = input.project || 'Unknown Project';
+  const taskBody = input.body || '';
 
   // Parse task body to extract original comment
   const commentMatch = taskBody.match(/## Original Comment\n\*\*Author:\*\* [^\n]+\n\n(.*?)\n\n## Metadata/s);
@@ -44,7 +46,7 @@ export function parseApprovalContext(run: AgentFieldRun): ApprovalContext | null
   const baseContext: ApprovalContext = {
     approvalType,
     taskId,
-    runId: run.run_id,
+    runId: data.workflow_id || data.run_id,
     requestId: approval_request_id,
     mrUrl: approval_request_url || undefined,
     expiresAt,
@@ -53,106 +55,61 @@ export function parseApprovalContext(run: AgentFieldRun): ApprovalContext | null
     projectName,
   };
 
-  // Add type-specific context
+  // Add type-specific context (requires trace data which we'll fetch separately)
+  // For now, these will be undefined and we'll enhance them later
   if (approvalType === 'spec') {
-    baseContext.spec = parseSpecContext(run);
+    baseContext.spec = parseSpecContext(data);
   } else if (approvalType === 'roborev') {
-    baseContext.roborev = parseRoborevContext(run);
+    baseContext.roborev = parseRoborevContext(data);
   } else if (approvalType === 'post') {
-    baseContext.response = parseResponseContext(run);
+    baseContext.response = parseResponseContext(data);
   }
 
   return baseContext;
 }
 
-function parseSpecContext(run: AgentFieldRun): SpecReviewContext | undefined {
+function parseSpecContext(_data: any): SpecReviewContext | undefined {
+  // Would need to fetch the full trace from other executions
+  // For now, return undefined - we'll enhance this later
+  return undefined;
+
   // Extract analysis result from analyze_task
-  const analyzeCall = run.trace?.find((call) => call.name.endsWith('.analyze_task'));
-  const analysis = analyzeCall?.output as any;
+  // const analyzeCall = data.trace?.find((call: any) => call.name.endsWith('.analyze_task'));
+  // const analysis = analyzeCall?.output as any;
 
   // Extract spec from plan_changes
-  const planCall = run.trace?.find((call) => call.name.endsWith('.plan_changes'));
-  const spec = planCall?.output as any;
+  // const planCall = data.trace?.find((call: any) => call.name.endsWith('.plan_changes'));
+  // const spec = planCall?.output as any;
 
-  if (!analysis || !spec) {
-    return undefined;
-  }
+  // if (!analysis || !spec) {
+  //   return undefined;
+  // }
 
-  return {
-    confidence: (analysis.confidence as number) || 0,
-    complexity: (analysis.complexity as 1 | 2 | 3 | 4 | 5) || 3,
-    reasoning: (analysis.reasoning as string) || '',
-    suggestedApproach: (analysis.suggested_approach as string) || '',
-    filesLikelyAffected: (analysis.files_likely_affected as string[]) || [],
-    spec: {
-      summary: (spec.summary as string) || '',
-      problemStatement: (spec.problem_statement as string) || '',
-      proposedSolution: (spec.proposed_solution as string) || '',
-      filesToModify: (spec.files_to_modify as string[]) || [],
-      filesToCreate: (spec.files_to_create as string[]) || [],
-      testingApproach: (spec.testing_approach as string) || '',
-      risks: (spec.risks as string[]) || [],
-      questions: (spec.questions as string[]) || [],
-    },
-  };
+  // return {
+  //   confidence: (analysis.confidence as number) || 0,
+  //   complexity: (analysis.complexity as 1 | 2 | 3 | 4 | 5) || 3,
+  //   reasoning: (analysis.reasoning as string) || '',
+  //   suggestedApproach: (analysis.suggested_approach as string) || '',
+  //   filesLikelyAffected: (analysis.files_likely_affected as string[]) || [],
+  //   spec: {
+  //     summary: (spec.summary as string) || '',
+  //     problemStatement: (spec.problem_statement as string) || '',
+  //     proposedSolution: (spec.proposed_solution as string) || '',
+  //     filesToModify: (spec.files_to_modify as string[]) || [],
+  //     filesToCreate: (spec.files_to_create as string[]) || [],
+  //     testingApproach: (spec.testing_approach as string) || '',
+  //     risks: (spec.risks as string[]) || [],
+  //     questions: (spec.questions as string[]) || [],
+  //   },
+  // };
 }
 
-function parseRoborevContext(run: AgentFieldRun): RoborevContext | undefined {
-  // Extract execution result
-  const executeCall = run.trace?.find((call) => call.name.endsWith('.execute_changes'));
-  const execution = executeCall?.output as any;
-
-  // Extract roborev result
-  const roborevCall = run.trace?.find((call) => call.name.endsWith('.run_roborev'));
-  const roborev = roborevCall?.output as any;
-
-  if (!execution || !roborev) {
-    return undefined;
-  }
-
-  // Extract original comment from process_task
-  const processTaskCall = run.trace?.find((call) => call.name.endsWith('.process_task'));
-  const taskBody = (processTaskCall?.input.body as string) || '';
-  const commentMatch = taskBody.match(/## Original Comment\n\*\*Author:\*\* [^\n]+\n\n(.*?)\n\n## Metadata/s);
-  const originalComment = commentMatch ? commentMatch[1].trim() : '';
-
-  return {
-    filesChanged: (execution.files_changed as string[]) || [],
-    commitSha: (execution.commit_sha as string) || '',
-    iterations: (roborev.iterations as number) || 0,
-    findings: (roborev.final_findings as string[]) || [],
-    originalComment,
-  };
+function parseRoborevContext(_data: any): RoborevContext | undefined {
+  // Would need to fetch the full trace from other executions
+  return undefined;
 }
 
-function parseResponseContext(run: AgentFieldRun): ResponseContext | undefined {
-  // Extract execution result
-  const executeCall = run.trace?.find((call) => call.name.endsWith('.execute_changes'));
-  const execution = executeCall?.output;
-
-  // Extract draft response
-  const draftCall = run.trace?.find((call) => call.name.endsWith('.draft_response'));
-  const draft = draftCall?.output;
-
-  // Extract publish result for MR URL
-  const publishCall = run.trace?.find((call) => call.name.endsWith('.publish_changes'));
-  const publish = publishCall?.output;
-
-  if (!execution || !draft) {
-    return undefined;
-  }
-
-  // Extract original comment from process_task
-  const processTaskCall = run.trace?.find((call) => call.name.endsWith('.process_task'));
-  const taskBody = (processTaskCall?.input.body as string) || '';
-  const commentMatch = taskBody.match(/## Original Comment\n\*\*Author:\*\* [^\n]+\n\n(.*?)\n\n## Metadata/s);
-  const originalComment = commentMatch ? commentMatch[1].trim() : '';
-
-  return {
-    draftResponse: (draft as any).response_text || '',
-    filesChanged: (execution as any).files_changed || [],
-    commitSha: (execution as any).commit_sha || '',
-    originalComment,
-    mrUrl: (publish as any)?.merge_request_url || run.pauseContext?.approval_request_url || '',
-  };
+function parseResponseContext(_data: any): ResponseContext | undefined {
+  // Would need to fetch the full trace from other executions
+  return undefined;
 }

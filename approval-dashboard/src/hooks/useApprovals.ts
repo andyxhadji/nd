@@ -1,5 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchWaitingRuns, fetchRunDetails, POLL_INTERVAL_MS } from '../api/agentfield';
+import {
+  fetchWaitingRuns,
+  fetchRunDetails,
+  findWaitingExecutions,
+  fetchExecutionDetails,
+  POLL_INTERVAL_MS,
+} from '../api/agentfield';
 import { parseApprovalContext } from '../utils/parser';
 import { ApprovalContext } from '../api/types';
 
@@ -10,27 +16,38 @@ export function useApprovals() {
   return useQuery<ApprovalContext[], Error>({
     queryKey: ['approvals'],
     queryFn: async () => {
-      // Fetch waiting runs (already filtered to paused status)
+      // Fetch all runs
       const runs = await fetchWaitingRuns();
 
       // Filter to nd-worker runs only (agent_id should be 'nd-worker')
       const workerRuns = runs.filter((run) => run.agent_id === 'nd-worker');
 
-      // Fetch details and parse context for each run
-      const contexts = await Promise.all(
-        workerRuns.map(async (run) => {
-          try {
-            const details = await fetchRunDetails(run.run_id);
-            return parseApprovalContext(details);
-          } catch (error) {
-            console.error(`Failed to fetch details for run ${run.run_id}:`, error);
-            return null;
-          }
-        })
-      );
+      // Fetch DAG for each run and find waiting executions
+      const allApprovals: ApprovalContext[] = [];
 
-      // Filter out nulls and return
-      return contexts.filter((ctx): ctx is ApprovalContext => ctx !== null);
+      for (const run of workerRuns) {
+        try {
+          const dag = await fetchRunDetails(run.run_id);
+          const waitingExecutionIds = findWaitingExecutions(dag.dag);
+
+          // Fetch details for each waiting execution
+          for (const executionId of waitingExecutionIds) {
+            try {
+              const executionDetails = await fetchExecutionDetails(executionId);
+              const context = parseApprovalContext({ ...run, ...executionDetails });
+              if (context) {
+                allApprovals.push(context);
+              }
+            } catch (error) {
+              console.error(`Failed to fetch execution ${executionId}:`, error);
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to fetch DAG for run ${run.run_id}:`, error);
+        }
+      }
+
+      return allApprovals;
     },
     refetchInterval: POLL_INTERVAL_MS,
     retry: true,
