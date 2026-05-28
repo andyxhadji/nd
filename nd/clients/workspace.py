@@ -53,6 +53,11 @@ def _anon_clone_url(platform_host: str, repo_owner: str, repo_name: str) -> str:
     return f"https://{platform_host}/{repo_owner}/{repo_name}.git"
 
 
+def _remote_branch_ref(branch: str) -> str:
+    """Return the remote-tracking ref used as an immutable worktree source."""
+    return f"refs/remotes/origin/{branch}"
+
+
 def _askpass_env(
     platform: str,
     github_token: str,
@@ -213,22 +218,21 @@ class WorkspaceClient:
                 if rc != 0:
                     logger.warning("git clone --bare failed: %s", err.strip())
                     return None
-            else:
-                rc, _, err = await self._run(
-                    [
-                        "git",
-                        "-C",
-                        bare_path,
-                        "fetch",
-                        "--prune",
-                        anon_url,
-                        "+refs/heads/*:refs/heads/*",
-                    ],
-                    env=env_overrides,
-                )
-                if rc != 0:
-                    logger.warning("git fetch failed: %s", err.strip())
-                    return None
+            rc, _, err = await self._run(
+                [
+                    "git",
+                    "-C",
+                    bare_path,
+                    "fetch",
+                    "--prune",
+                    anon_url,
+                    "+refs/heads/*:refs/remotes/origin/*",
+                ],
+                env=env_overrides,
+            )
+            if rc != 0:
+                logger.warning("git fetch failed: %s", err.strip())
+                return None
         finally:
             # Always wipe the askpass helper, even on failure paths.
             if askpass_tmpdir is not None:
@@ -243,7 +247,16 @@ class WorkspaceClient:
 
         if head_branch:
             rc, _, err = await self._run(
-                ["git", "-C", bare_path, "worktree", "add", worktree_path, head_branch],
+                [
+                    "git",
+                    "-C",
+                    bare_path,
+                    "worktree",
+                    "add",
+                    "--detach",
+                    worktree_path,
+                    _remote_branch_ref(head_branch),
+                ],
             )
             branch = head_branch
         else:
@@ -258,7 +271,7 @@ class WorkspaceClient:
                     "-b",
                     new_branch,
                     worktree_path,
-                    base_branch,
+                    _remote_branch_ref(base_branch),
                 ],
             )
             branch = new_branch

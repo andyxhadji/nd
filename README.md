@@ -126,6 +126,10 @@ Docker Compose bind-mounts `${ND_WORKSPACE_ROOT:-./.nd-workspace}` to
 from the host. Override `ND_WORKSPACE_ROOT` in your shell or `.env.local`
 to put this state somewhere else.
 
+Worker containers also mount `${HOME}/.claude` and `${HOME}/.claude.json`
+to `/root`, and set the Claude Code Bedrock environment variables, so the
+Claude Code harness can use the same provider configuration as the host.
+
 ### Kata daemon for Docker
 
 Compose runs kata's daemon as its own service (`kata-daemon`) listening on `127.0.0.1:7878`. The agent services (`triage`, `worker-1`, `worker-2`) all use `network_mode: "service:kata-daemon"` so they share that container's network namespace and can reach the daemon on loopback — required because kata refuses to start on a non-loopback TCP listener (see `internal/daemon/auth.go` `checkAuthStartup`).

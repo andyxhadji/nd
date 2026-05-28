@@ -219,6 +219,7 @@ class TestPrepareNoExistingCache:
             monkeypatch,
             [
                 (0, b""),  # git clone --bare
+                (0, b""),  # git fetch --prune ... into remote-tracking refs
                 (0, b""),  # git worktree add
             ],
         )
@@ -258,11 +259,27 @@ class TestPrepareNoExistingCache:
         assert first_env["GIT_ASKPASS_TOKEN"] == "ghp_test"
         assert first_env["GIT_ASKPASS_USERNAME"] == "x-access-token"
 
-        # Second call: git -C <bare> worktree add <wt> <branch>
+        # Second call refreshes remote-tracking refs rather than local
+        # branch refs, so checked-out cached worktrees don't block fetches.
         second = captured["cmds"][1]
-        assert second[:3] == ("git", "-C", "/var/nd/repos/github.com/octocat/Hello-World.git")
-        assert "worktree" in second and "add" in second
-        assert second[-2:] == ("/var/nd/work/myproj-7by6", "master")
+        assert second[:5] == (
+            "git",
+            "-C",
+            "/var/nd/repos/github.com/octocat/Hello-World.git",
+            "fetch",
+            "--prune",
+        )
+        assert second[-1] == "+refs/heads/*:refs/remotes/origin/*"
+
+        # Third call: git -C <bare> worktree add --detach <wt> <origin branch>
+        third = captured["cmds"][2]
+        assert third[:3] == ("git", "-C", "/var/nd/repos/github.com/octocat/Hello-World.git")
+        assert "worktree" in third and "add" in third
+        assert "--detach" in third
+        assert third[-2:] == (
+            "/var/nd/work/myproj-7by6",
+            "refs/remotes/origin/master",
+        )
 
 
 @pytest.mark.asyncio
@@ -300,11 +317,18 @@ class TestPrepareExistingCache:
         # First call should be `git -C <bare> fetch --prune ...`
         first = captured["cmds"][0]
         assert first[0:5] == ("git", "-C", bare, "fetch", "--prune")
+        assert first[-1] == "+refs/heads/*:refs/remotes/origin/*"
         # No `git clone --bare` was issued.
         assert all(c[0:3] != ("git", "clone", "--bare") for c in captured["cmds"])
         # And no token leaked into the fetch argv.
         for arg in first:
             assert "ghp_test" not in arg
+
+        second = captured["cmds"][1]
+        assert second[-2:] == (
+            "/var/nd/work/myproj-7by6",
+            "refs/remotes/origin/master",
+        )
 
 
 @pytest.mark.asyncio
@@ -314,6 +338,7 @@ class TestPrepareIssueBranch:
             monkeypatch,
             [
                 (0, b""),  # git clone --bare
+                (0, b""),  # git fetch --prune ... into remote-tracking refs
                 (0, b"main\n"),  # git symbolic-ref --short HEAD -> main
                 (0, b""),  # git worktree add -b nd/issue-7by6 ... main
             ],
@@ -337,12 +362,13 @@ class TestPrepareIssueBranch:
         assert ws.branch == "nd/issue-7by6"
         assert ws.base_branch == "main"
 
-        # The third subprocess call is the worktree add with -b nd/issue-7by6 main.
-        third = captured["cmds"][2]
-        assert "-b" in third
-        idx = third.index("-b")
-        assert third[idx + 1] == "nd/issue-7by6"
-        assert third[-1] == "main"
+        # The fourth subprocess call is the worktree add with -b nd/issue-7by6
+        # from the remote-tracking main ref.
+        fourth = captured["cmds"][3]
+        assert "-b" in fourth
+        idx = fourth.index("-b")
+        assert fourth[idx + 1] == "nd/issue-7by6"
+        assert fourth[-1] == "refs/remotes/origin/main"
 
 
 @pytest.mark.asyncio

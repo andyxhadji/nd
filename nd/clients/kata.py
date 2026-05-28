@@ -160,7 +160,7 @@ class KataClient:
         except json.JSONDecodeError:
             logger.warning("kata projects list returned non-JSON stdout: %r", stdout)
             return []
-        return [p["name"] for p in data.get("projects", []) if p.get("name")]
+        return [p["name"] for p in (data.get("projects") or []) if p.get("name")]
 
     async def ready(self, label: str, unowned: bool = True) -> list[KataTask]:
         """Get tasks ready for work across all projects.
@@ -194,7 +194,7 @@ class KataClient:
                     stdout,
                 )
                 continue
-            for issue in data.get("issues", []):
+            for issue in data.get("issues") or []:
                 tasks.append(KataTask.from_dict(issue, project=project))
         return tasks
 

@@ -1,5 +1,6 @@
 """Mocked end-to-end tests for triage and worker agent flows."""
 
+import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -284,6 +285,7 @@ class Approved:
 
 
 async def approved_pause(**_kwargs):
+    assert "context" not in _kwargs
     return Approved()
 
 
@@ -435,6 +437,79 @@ async def test_worker_processes_gitlab_issue_task_pushes_branch_and_creates_mr(m
 
 
 @pytest.mark.asyncio
+async def test_worker_fails_issue_task_when_merge_request_creation_fails(monkeypatch):
+    issue_body = KataClient.build_issue_task_body(
+        issue_url="https://gitlab.example.com/org/repo/-/issues/7",
+        issue_title="Fix parser edge case",
+        issue_number=7,
+        platform="gitlab",
+        platform_host="gitlab.example.com",
+        repo_owner="org",
+        repo_name="repo",
+        issue_author="reporter",
+        issue_body="Parser fails on empty input.",
+        assignees=[],
+    )
+
+    class FailingMRPlatform(FakeWorkerPlatform):
+        async def create_merge_request(self, **kwargs):
+            self.merge_requests.append(kwargs)
+            return None
+
+    app, fake_kata, fake_workspace, fake_platform = _make_worker_agent(
+        monkeypatch, platform=FailingMRPlatform()
+    )
+    draft_calls = []
+
+    async def fake_call(name: str, **kwargs):
+        reasoner = name.split(".")[-1]
+        if reasoner == "analyze_task":
+            return AnalysisResult(
+                complexity=2,
+                confidence=95,
+                reasoning="deterministic",
+                suggested_approach="Add the missing parser guard.",
+                files_likely_affected=["parser.py"],
+                confident=True,
+            ).model_dump()
+        if reasoner == "execute_changes":
+            return ExecutionResult(
+                success=True,
+                files_changed=["parser.py"],
+                commit_sha="abc1234",
+            ).model_dump()
+        if reasoner == "run_roborev":
+            return RoborevResult(passed=True, iterations=1).model_dump()
+        if reasoner == "draft_response":
+            draft_calls.append(kwargs)
+            return DraftResult(response_text="Should not draft.", confident=True).model_dump()
+        return await dispatch_reasoner(app, name, **kwargs)
+
+    monkeypatch.setattr(app, "call", fake_call)
+
+    result = await app._reasoner_registry["process_task"].func(
+        task_id="repo#0007",
+        project="repo",
+        title="Fix parser edge case",
+        body=issue_body,
+        labels=["from-issue", "nd"],
+    )
+
+    assert result == {
+        "status": "failed",
+        "changes_made": [],
+        "response_draft": None,
+        "error": "merge request creation failed",
+    }
+    assert ("repo#0007", "failed") in fake_kata.labels
+    assert fake_workspace.pushed == [
+        {"platform": "gitlab", "repo_path": "/tmp/nd-work/repo-0007", "branch": "nd/issue-0007"}
+    ]
+    assert fake_platform.merge_requests
+    assert draft_calls == []
+
+
+@pytest.mark.asyncio
 async def test_worker_processes_gitlab_mr_task_pushes_branch_and_posts_response(monkeypatch):
     mr_body = KataClient.build_task_body(
         mr_url="https://gitlab.example.com/org/repo/-/merge_requests/42",
@@ -507,3 +582,115 @@ async def test_worker_processes_gitlab_mr_task_pushes_branch_and_posts_response(
         }
     ]
     assert fake_kata.comments[-1] == ("repo#0042", "Response posted. Commit: def5678")
+
+
+@pytest.mark.asyncio
+async def test_execute_changes_fails_when_harness_makes_no_changes(monkeypatch, tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True)
+    (repo / "README.md").write_text("Initial\n")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "initial"], cwd=repo, check=True, stdout=subprocess.DEVNULL
+    )
+
+    app, *_ = _make_worker_agent(monkeypatch)
+
+    async def noop_harness(**_kwargs):
+        return None
+
+    monkeypatch.setattr(app, "harness", noop_harness)
+
+    result = await app._reasoner_registry["execute_changes"].func(
+        task_id="repo#0001",
+        comment_body="Change README.md",
+        repo_path=str(repo),
+        head_branch="main",
+    )
+
+    assert result == {
+        "success": False,
+        "files_changed": [],
+        "commit_sha": None,
+        "error": "harness completed without producing changes",
+    }
+
+
+@pytest.mark.asyncio
+async def test_execute_changes_commits_uncommitted_harness_edits(monkeypatch, tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True)
+    (repo / "README.md").write_text("Initial\n")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "initial"], cwd=repo, check=True, stdout=subprocess.DEVNULL
+    )
+
+    app, *_ = _make_worker_agent(monkeypatch)
+
+    async def dirty_harness(**_kwargs):
+        (repo / "README.md").write_text("Changed but uncommitted\n")
+
+    monkeypatch.setattr(app, "harness", dirty_harness)
+
+    result = await app._reasoner_registry["execute_changes"].func(
+        task_id="repo#0001",
+        comment_body="Change README.md",
+        repo_path=str(repo),
+        head_branch="main",
+    )
+
+    assert result["success"] is True
+    assert result["files_changed"] == ["README.md"]
+    assert result["commit_sha"]
+    assert result["error"] is None
+
+    commit_subject = subprocess.check_output(
+        ["git", "log", "-1", "--format=%s"], cwd=repo, text=True
+    ).strip()
+    assert commit_subject == "Address ND task repo#0001"
+
+
+@pytest.mark.asyncio
+async def test_execute_changes_invokes_claude_code_with_write_tools(monkeypatch, tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True)
+    (repo / "README.md").write_text("Initial\n")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "initial"], cwd=repo, check=True, stdout=subprocess.DEVNULL
+    )
+
+    app, *_ = _make_worker_agent(monkeypatch)
+    harness_calls = []
+
+    async def editing_harness(**kwargs):
+        harness_calls.append(kwargs)
+        (repo / "README.md").write_text("Changed\n")
+        subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-m", "change readme"], cwd=repo, check=True)
+
+    monkeypatch.setattr(app, "harness", editing_harness)
+
+    result = await app._reasoner_registry["execute_changes"].func(
+        task_id="repo#0001",
+        comment_body="Change README.md",
+        repo_path=str(repo),
+        head_branch="main",
+    )
+
+    assert result["success"] is True
+    assert result["files_changed"] == ["README.md"]
+    assert harness_calls[0]["provider"] == "claude-code"
+    assert harness_calls[0]["tools"] == ["Read", "Write", "Edit"]
+    assert harness_calls[0]["permission_mode"] == "acceptEdits"
+    assert "worker will commit" in harness_calls[0]["prompt"]

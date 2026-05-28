@@ -502,6 +502,19 @@ class TestKataClientAsync:
         assert "--unowned" not in captured["cmds"][1]
 
     @pytest.mark.asyncio
+    async def test_ready_handles_null_issues(self, monkeypatch):
+        projects_payload = json.dumps({"kata_api_version": 1, "projects": [{"name": "p"}]}).encode()
+        null_ready = json.dumps({"kata_api_version": 1, "issues": None}).encode()
+        _patch_kata_subprocess_sequence(monkeypatch, [(0, projects_payload), (0, null_ready)])
+        assert await KataClient().ready(label="nd") == []
+
+    @pytest.mark.asyncio
+    async def test_list_projects_handles_null_projects(self, monkeypatch):
+        projects_payload = json.dumps({"kata_api_version": 1, "projects": None}).encode()
+        _patch_kata_subprocess_sequence(monkeypatch, [(0, projects_payload)])
+        assert await KataClient().list_projects() == []
+
+    @pytest.mark.asyncio
     async def test_ready_returns_empty_when_projects_list_fails(self, monkeypatch):
         # If we cannot enumerate projects we have nothing to query.
         _patch_kata_subprocess_sequence(monkeypatch, [(1, b"")])

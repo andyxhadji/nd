@@ -253,14 +253,9 @@ def create_worker_agent(
             # Pause for human spec review
             approval = await app.pause(
                 approval_request_id=f"spec-{task_id}",
+                approval_request_url=context.get("mr_url", ""),
                 expires_in_hours=72,
                 timeout=259200,
-                context={
-                    "type": "spec_review",
-                    "task_id": task_id,
-                    "spec": spec.model_dump(),
-                    "analysis": analysis.model_dump(),
-                },
             )
 
             if not approval.approved:
@@ -303,14 +298,9 @@ def create_worker_agent(
             # Pause for human review of roborev failure
             approval = await app.pause(
                 approval_request_id=f"roborev-{task_id}",
+                approval_request_url=context.get("mr_url", ""),
                 expires_in_hours=72,
                 timeout=259200,
-                context={
-                    "type": "roborev_failure",
-                    "task_id": task_id,
-                    "findings": roborev.final_findings,
-                    "iterations": roborev.iterations,
-                },
             )
 
             if not approval.approved:
@@ -335,7 +325,7 @@ def create_worker_agent(
             is_issue=is_issue,
         )
         publish = PublishResult(**publish_result)
-        if not publish.pushed:
+        if not publish.pushed or publish.error:
             await kata.label(task_id, "failed")
             await _maybe_cleanup_on_failure()
             return ProcessResult(
@@ -356,17 +346,9 @@ def create_worker_agent(
         # Always pause for response approval
         approval = await app.pause(
             approval_request_id=f"post-{task_id}",
+            approval_request_url=publish.merge_request_url or context.get("mr_url", ""),
             expires_in_hours=72,
             timeout=259200,
-            context={
-                "type": "response_approval",
-                "task_id": task_id,
-                "mr_url": context.get("mr_url", ""),
-                "original_comment": context["comment_body"],
-                "response_draft": draft.response_text,
-                "commit_sha": execution.commit_sha,
-                "changes_summary": execution.files_changed,
-            },
         )
 
         if not approval.approved:
@@ -500,23 +482,18 @@ Create a detailed spec.""",
         spec: dict | None = None,
     ) -> dict:
         """Execute code changes using the harness."""
-        goal = f"Address this code review comment:\n\n{comment_body}"
+        goal = (
+            "Address this code review comment:\n\n"
+            f"{comment_body}\n\n"
+            "Make the requested change and run a focused verification if practical. "
+            "Leave the resulting file edits in the repository; the worker will commit them."
+        )
         if spec:
             spec_obj = SpecDocument(**spec)
             goal += f"\n\nSpec:\n{spec_obj.proposed_solution}"
 
         try:
-            await app.harness(
-                prompt=goal,
-                provider="claude-code",
-                tools=["read", "write", "edit", "bash"],
-                max_turns=20,
-                cwd=repo_path,
-            )
 
-            # Capture the actual commit_sha and changed-file list from the
-            # worktree so downstream reasoners (run_roborev, draft_response)
-            # see real values instead of placeholders.
             async def _git(args: list[str]) -> tuple[int, str]:
                 proc = await asyncio.create_subprocess_exec(
                     "git",
@@ -529,21 +506,70 @@ Create a detailed spec.""",
                 out, _ = await proc.communicate()
                 return proc.returncode, out.decode().strip()
 
+            rc_before, before_sha = await _git(["rev-parse", "HEAD"])
+            before_sha = before_sha if rc_before == 0 else ""
+
+            await app.harness(
+                prompt=goal,
+                provider="claude-code",
+                tools=["Read", "Write", "Edit"],
+                permission_mode="acceptEdits",
+                max_turns=20,
+                cwd=repo_path,
+            )
+
             rc_sha, sha = await _git(["rev-parse", "HEAD"])
             commit_sha = sha if rc_sha == 0 and sha else None
 
-            # Use ``git diff-tree`` so we don't depend on HEAD having a
-            # parent — this works on the first commit, on orphan branches,
-            # and even when the harness made no commit (the diff against
-            # the empty tree is empty, which yields an empty list, not an
-            # error).
+            rc_status, status_text = await _git(["status", "--porcelain"])
+            dirty_files = (
+                [
+                    (line[3:] if len(line) > 3 and line[2] == " " else line[2:].lstrip())
+                    for line in status_text.splitlines()
+                    if len(line) > 2
+                ]
+                if rc_status == 0
+                else []
+            )
+
+            if commit_sha == before_sha and not dirty_files:
+                return ExecutionResult(
+                    success=False,
+                    error="harness completed without producing changes",
+                ).model_dump()
+
+            if dirty_files:
+                await _git(["config", "user.email", "nd-worker@example.com"])
+                await _git(["config", "user.name", "ND Worker"])
+                add_rc, _ = await _git(["add", "--", *dirty_files])
+                commit_rc, _ = await _git(
+                    [
+                        "commit",
+                        "-m",
+                        f"Address ND task {task_id}",
+                    ]
+                )
+                if add_rc != 0 or commit_rc != 0:
+                    return ExecutionResult(
+                        success=False,
+                        files_changed=dirty_files,
+                        commit_sha=commit_sha,
+                        error="harness completed with uncommitted changes",
+                    ).model_dump()
+                rc_sha, sha = await _git(["rev-parse", "HEAD"])
+                commit_sha = sha if rc_sha == 0 and sha else None
+
+            if commit_sha == before_sha:
+                return ExecutionResult(
+                    success=False,
+                    error="harness completed without committing changes",
+                ).model_dump()
+
             rc_files, files_text = await _git(
                 [
-                    "diff-tree",
-                    "--no-commit-id",
+                    "diff",
                     "--name-only",
-                    "-r",
-                    "HEAD",
+                    f"{before_sha}..HEAD",
                 ],
             )
             files_changed = [f for f in files_text.splitlines() if f] if rc_files == 0 else []
