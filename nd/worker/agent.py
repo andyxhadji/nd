@@ -652,7 +652,7 @@ Create a detailed spec.""",
         """Generate response text based on changes made."""
 
         class ResponseDraft(BaseModel):
-            response_text: str
+            message: str
             confident: bool
 
         llm_result = await app.ai(
@@ -664,12 +664,12 @@ Offer to make adjustments if needed.""",
 We changed these files: {changes_made}
 In this commit: {commit_sha}
 
-Write the message text (response_text) and indicate if you're confident the changes fully address their comment (confident: true/false).""",
+Write the reply message and indicate if you're confident the changes fully address their comment.""",
             schema=ResponseDraft,
         )
 
         return DraftResult(
-            response_text=llm_result.response_text,
+            response_text=llm_result.message,
             confident=llm_result.confident,
         ).model_dump()
 
