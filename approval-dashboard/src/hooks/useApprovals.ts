@@ -34,7 +34,11 @@ export function useApprovals() {
           for (const executionId of waitingExecutionIds) {
             try {
               const executionDetails = await fetchExecutionDetails(executionId);
-              const context = parseApprovalContext({ ...run, ...executionDetails });
+              const context = await parseApprovalContext({
+                ...run,
+                ...executionDetails,
+                dag: dag.dag // Pass the full DAG so parser can find sibling executions
+              });
               if (context) {
                 allApprovals.push(context);
               }

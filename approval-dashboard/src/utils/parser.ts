@@ -5,12 +5,13 @@ import {
   RoborevContext,
   ResponseContext,
 } from '../api/types';
+import { fetchExecutionDetails } from '../api/agentfield';
 
 /**
  * Parse AgentField execution details to extract approval context.
  * The data structure comes from /api/ui/v1/executions/{id}/details
  */
-export function parseApprovalContext(data: any): ApprovalContext | null {
+export async function parseApprovalContext(data: any): Promise<ApprovalContext | null> {
   const approval_request_id = data.approval_request_id;
   const approval_request_url = data.approval_request_url;
 
@@ -55,20 +56,19 @@ export function parseApprovalContext(data: any): ApprovalContext | null {
     projectName,
   };
 
-  // Add type-specific context (requires trace data which we'll fetch separately)
-  // For now, these will be undefined and we'll enhance them later
+  // Add type-specific context (requires fetching sibling execution details)
   if (approvalType === 'spec') {
-    baseContext.spec = parseSpecContext(data);
+    baseContext.spec = await parseSpecContext(data);
   } else if (approvalType === 'roborev') {
-    baseContext.roborev = parseRoborevContext(data);
+    baseContext.roborev = await parseRoborevContext(data);
   } else if (approvalType === 'post') {
-    baseContext.response = parseResponseContext(data);
+    baseContext.response = await parseResponseContext(data);
   }
 
   return baseContext;
 }
 
-function parseSpecContext(_data: any): SpecReviewContext | undefined {
+async function parseSpecContext(_data: any): Promise<SpecReviewContext | undefined> {
   // Would need to fetch the full trace from other executions
   // For now, return undefined - we'll enhance this later
   return undefined;
@@ -104,12 +104,80 @@ function parseSpecContext(_data: any): SpecReviewContext | undefined {
   // };
 }
 
-function parseRoborevContext(_data: any): RoborevContext | undefined {
+async function parseRoborevContext(_data: any): Promise<RoborevContext | undefined> {
   // Would need to fetch the full trace from other executions
   return undefined;
 }
 
-function parseResponseContext(_data: any): ResponseContext | undefined {
-  // Would need to fetch the full trace from other executions
-  return undefined;
+async function parseResponseContext(data: any): Promise<ResponseContext | undefined> {
+  // Extract response details from sibling executions in the DAG
+  if (!data.dag) return undefined;
+
+  // Find the process_task execution (parent of waiting execution)
+  const processTask = findExecutionInDAG(data.dag, data.execution_id);
+  if (!processTask || !processTask.children) return undefined;
+
+  // Find draft_response execution
+  const draftExec = processTask.children.find((child: any) =>
+    child.reasoner_id === 'draft_response' && child.status === 'succeeded'
+  );
+
+  // Find execute_changes execution
+  const executeExec = processTask.children.find((child: any) =>
+    child.reasoner_id === 'execute_changes' && child.status === 'succeeded'
+  );
+
+  // Find publish_changes execution
+  const publishExec = processTask.children.find((child: any) =>
+    child.reasoner_id === 'publish_changes' && child.status === 'succeeded'
+  );
+
+  if (!draftExec) return undefined;
+
+  // Fetch execution details to get the output_data
+  try {
+    const draftDetails = await fetchExecutionDetails(draftExec.execution_id);
+    const executeDetails = executeExec ? await fetchExecutionDetails(executeExec.execution_id) : null;
+    const publishDetails = publishExec ? await fetchExecutionDetails(publishExec.execution_id) : null;
+
+    // Extract draft response text
+    let draftResponse = draftDetails.output_data?.response_text || '';
+
+    // Handle double-nested JSON (the response_text sometimes contains nested JSON)
+    if (typeof draftResponse === 'string' && draftResponse.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(draftResponse);
+        if (parsed.message) {
+          draftResponse = parsed.message;
+        }
+      } catch (e) {
+        // Keep original if parsing fails
+      }
+    }
+
+    return {
+      draftResponse,
+      filesChanged: executeDetails?.output_data?.files_changed || [],
+      commitSha: executeDetails?.output_data?.commit_sha || '',
+      originalComment: data.input_data?.body || '',
+      mrUrl: publishDetails?.output_data?.merge_request_url || data.approval_request_url || '',
+    };
+  } catch (error) {
+    console.error('Failed to fetch execution details for response context:', error);
+    return undefined;
+  }
+}
+
+function findExecutionInDAG(dag: any, executionId: string): any {
+  if (!dag) return null;
+  if (dag.execution_id === executionId) return dag;
+
+  if (Array.isArray(dag.children)) {
+    for (const child of dag.children) {
+      const found = findExecutionInDAG(child, executionId);
+      if (found) return found;
+    }
+  }
+
+  return null;
 }
