@@ -74,27 +74,34 @@ CI (`.github/workflows/ci.yml`) runs `ruff check`, `ruff format --check`, unit t
 
 ## Refreshing AWS Credentials
 
-When AWS credentials expire (or after running `saml2aws login`), follow this workflow to update the docker-compose environment:
+When AWS credentials expire, follow this workflow to update the docker-compose environment:
 
 ```bash
-# 1. Run saml2aws login
-saml2aws login
+# 1. Get fresh credentials from mba-horizon profile (horizon-okta role)
+# This role has Bedrock permissions, unlike the base horizon role
+aws configure export-credentials --profile mba-horizon --format env
 
-# 2. Update .env.local with fresh credentials from assumed-horizon profile
-# Extract credentials from ~/.aws/saml2aws_credentials [assumed-horizon] section:
-#   - aws_access_key_id → AWS_ACCESS_KEY_ID
-#   - aws_secret_access_key → AWS_SECRET_ACCESS_KEY
-#   - aws_session_token → AWS_SESSION_TOKEN
+# 2. Update .env.local with the exported credentials:
+#   - export AWS_ACCESS_KEY_ID=... → AWS_ACCESS_KEY_ID=...
+#   - export AWS_SECRET_ACCESS_KEY=... → AWS_SECRET_ACCESS_KEY=...
+#   - export AWS_SESSION_TOKEN=... → AWS_SESSION_TOKEN=...
 
 # 3. Restart docker-compose to reload env_file
 docker-compose down
 docker-compose up -d
 
-# 4. Verify credentials loaded in worker containers
-docker exec hyper-furniture-worker-1-1 env | grep AWS_ACCESS_KEY_ID
+# 4. Verify credentials loaded and have Bedrock access
+docker exec hyper-furniture-worker-1-1 sh -c '
+  python3 -c "import boto3; sts = boto3.client(\"sts\", region_name=\"us-east-1\"); print(\"Identity:\", sts.get_caller_identity()[\"Arn\"])"
+'
+# Should show: arn:aws:sts::657062785455:assumed-role/horizon-okta/andy
 ```
 
-**Why this is needed:** Workers load AWS credentials from `.env.local` via docker-compose's `env_file` directive. The credentials are only read at container startup, so a full restart is required after updating `.env.local`.
+**Why this is needed:**
+- Workers load AWS credentials from `.env.local` via docker-compose's `env_file` directive
+- The credentials are only read at container startup, so a full restart is required
+- **Important:** Use the `mba-horizon` profile (horizon-okta role), not `assumed-horizon` (horizon role)
+- The horizon-okta role has Bedrock InvokeModel permissions; the base horizon role does not
 
 ## Running the agents
 
