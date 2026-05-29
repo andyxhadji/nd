@@ -29,6 +29,7 @@ class Config:
     agent_port: int
     workspace_root: str
     workspace_keep_on_failure: bool
+    roborev_container_name: str
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -57,6 +58,7 @@ class Config:
             workspace_root=os.getenv("WORKSPACE_ROOT", "/var/nd"),
             workspace_keep_on_failure=os.getenv("WORKSPACE_KEEP_ON_FAILURE", "1")
             not in ("0", "false", "False", ""),
+            roborev_container_name=os.getenv("ROBOREV_CONTAINER_NAME", "hyper-furniture-roborev-1"),
         )
 
 

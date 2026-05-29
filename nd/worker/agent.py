@@ -640,7 +640,7 @@ Create a detailed spec.""",
                     "exec",
                     "-w",
                     repo_path,  # Set working directory in the target container
-                    "hyper-furniture-roborev-1",
+                    config.roborev_container_name,
                     "roborev",
                     "refine",
                     "--max-iterations",

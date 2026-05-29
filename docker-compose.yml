@@ -61,7 +61,7 @@ services:
       # - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
       - TRIAGE_MODEL=${TRIAGE_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
       # - ND_CURRENT_USER=${ND_CURRENT_USER}
-      - ND_ASSIGNED_USERNAMES=andyxhadji,fh-ahadjigeorgiou
+      - ND_ASSIGNED_USERNAMES=${ND_ASSIGNED_USERNAMES:-andyxhadji,fh-ahadjigeorgiou}
       - KATA_SERVER=http://127.0.0.1:7878
     depends_on:
       - agentfield

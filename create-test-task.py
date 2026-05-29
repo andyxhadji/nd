@@ -87,7 +87,7 @@ async def claim_task():
     print("   Target: nd-worker.claim_task")
 
     try:
-        result = await trigger.call("nd-worker.claim_task", payload="")
+        result = await trigger.call("nd-worker.claim_task", payload=None)
 
         print(f"\n   Result: {result}")
 
