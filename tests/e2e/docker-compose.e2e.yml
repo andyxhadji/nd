@@ -11,7 +11,7 @@ services:
       - LOG_LEVEL=info
       - AGENTFIELD_APPROVAL_WEBHOOK_SECRET=nd-e2e-test-secret
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
       interval: 5s
       timeout: 3s
       retries: 10
