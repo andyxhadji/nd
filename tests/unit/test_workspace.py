@@ -359,15 +359,19 @@ class TestPrepareIssueBranch:
         )
 
         assert ws is not None
-        assert ws.branch == "nd/issue-7by6"
+        # Branch name now includes a 6-character random hash suffix for uniqueness
+        assert ws.branch.startswith("nd/issue-7by6-")
+        assert len(ws.branch) == len("nd/issue-7by6-") + 6  # 6-char hex hash
         assert ws.base_branch == "main"
+        assert ws.branch_hash is not None
+        assert len(ws.branch_hash) == 6
 
-        # The fourth subprocess call is the worktree add with -b nd/issue-7by6
+        # The fourth subprocess call is the worktree add with -b nd/issue-7by6-<hash>
         # from the remote-tracking main ref.
         fourth = captured["cmds"][3]
         assert "-b" in fourth
         idx = fourth.index("-b")
-        assert fourth[idx + 1] == "nd/issue-7by6"
+        assert fourth[idx + 1] == ws.branch
         assert fourth[-1] == "refs/remotes/origin/main"
 
 

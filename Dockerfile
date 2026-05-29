@@ -11,11 +11,32 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including Node.js
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
+    ca-certificates \
+    gnupg \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+    && chmod a+r /etc/apt/keyrings/docker.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js (required for Claude CLI)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install roborev
+RUN curl -fsSL https://roborev.io/install.sh | bash
+
+# Install Claude Code CLI via npm (official package)
+RUN npm install -g @anthropic-ai/claude-code \
+    && rm -f /usr/bin/claude \
+    && ln -sf /usr/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe /usr/bin/claude
 
 # kata CLI from the builder stage
 COPY --from=kata-build /go/bin/kata /usr/local/bin/kata

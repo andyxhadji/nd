@@ -122,6 +122,7 @@ class WorkspaceResult(BaseModel):
     branch: str | None = None
     base_branch: str | None = None
     bare_path: str | None = None
+    branch_hash: str | None = None  # 6-char random hash for uniqueness
     error: str | None = None
 
 

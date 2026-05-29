@@ -72,6 +72,37 @@ ruff format --check .
 
 CI (`.github/workflows/ci.yml`) runs `ruff check`, `ruff format --check`, unit tests, and enforces ≥50% coverage. Match this locally before pushing.
 
+## Refreshing AWS Credentials
+
+When AWS credentials expire, follow this workflow to update the docker-compose environment:
+
+```bash
+# 1. Get fresh credentials from mba-horizon profile (horizon-okta role)
+# This role has Bedrock permissions, unlike the base horizon role
+aws configure export-credentials --profile mba-horizon --format env-no-export
+
+# 2. Update .env.local with the exported credentials (ready for direct copy-paste):
+#   AWS_ACCESS_KEY_ID=...
+#   AWS_SECRET_ACCESS_KEY=...
+#   AWS_SESSION_TOKEN=...
+
+# 3. Restart docker-compose to reload env_file
+docker-compose down
+docker-compose up -d
+
+# 4. Verify credentials loaded and have Bedrock access
+docker exec hyper-furniture-worker-1-1 sh -c '
+  python3 -c "import boto3; sts = boto3.client(\"sts\", region_name=\"us-east-1\"); print(\"Identity:\", sts.get_caller_identity()[\"Arn\"])"
+'
+# Should show: arn:aws:sts::657062785455:assumed-role/horizon-okta/andy
+```
+
+**Why this is needed:**
+- Workers load AWS credentials from `.env.local` via docker-compose's `env_file` directive
+- The credentials are only read at container startup, so a full restart is required
+- **Important:** Use the `mba-horizon` profile (horizon-okta role), not `assumed-horizon` (horizon role)
+- The horizon-okta role has Bedrock InvokeModel permissions; the base horizon role does not
+
 ## Running the agents
 
 ```bash

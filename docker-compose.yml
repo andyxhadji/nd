@@ -9,6 +9,17 @@ services:
       - DATABASE_URL=sqlite:///data/agentfield.db
       - LOG_LEVEL=info
       - AGENTFIELD_APPROVAL_WEBHOOK_SECRET=nd-approval-secret-dev
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./approval-dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - agentfield
+    restart: unless-stopped
 
   # Kata daemon runs in its own container with a docker-managed DB volume.
   # Tasks created here are NOT visible to the host's `kata` CLI; they live in
@@ -50,6 +61,7 @@ services:
       # - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
       - TRIAGE_MODEL=${TRIAGE_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
       # - ND_CURRENT_USER=${ND_CURRENT_USER}
+      - ND_ASSIGNED_USERNAMES=${ND_ASSIGNED_USERNAMES:-andyxhadji,fh-ahadjigeorgiou}
       - KATA_SERVER=http://127.0.0.1:7878
     depends_on:
       - agentfield
@@ -65,6 +77,7 @@ services:
       - ${ND_WORKSPACE_ROOT:-./.nd-workspace}:/var/nd
       - ${HOME}/.claude:/root/.claude
       - ${HOME}/.claude.json:/root/.claude.json
+      - /var/run/docker.sock:/var/run/docker.sock
     network_mode: "service:kata-daemon"
     environment:
       - AGENTFIELD_URL=http://agentfield:8080
@@ -87,7 +100,7 @@ services:
       - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}
       - ROBOREV_MAX_ITERATIONS=${ROBOREV_MAX_ITERATIONS:-3}
     depends_on:
-      - agentfield
+      # - agentfield
       - kata-daemon
     restart: unless-stopped
 
@@ -100,6 +113,7 @@ services:
       - ${ND_WORKSPACE_ROOT:-./.nd-workspace}:/var/nd
       - ${HOME}/.claude:/root/.claude
       - ${HOME}/.claude.json:/root/.claude.json
+      - /var/run/docker.sock:/var/run/docker.sock
     network_mode: "service:kata-daemon"
     environment:
       - AGENTFIELD_URL=http://agentfield:8080
@@ -124,6 +138,24 @@ services:
     depends_on:
       - agentfield
       - kata-daemon
+    restart: unless-stopped
+
+  roborev:
+    build: .
+    entrypoint: []
+    command: ["tail", "-f", "/dev/null"]
+    volumes:
+      - ${ND_WORKSPACE_ROOT:-./.nd-workspace}:/var/nd
+      - ${HOME}/.claude:/root/.claude
+      - ${HOME}/.claude.json:/root/.claude.json
+    environment:
+      - ANTHROPIC_MODEL=${CLAUDE_CODE_MODEL:-arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - ANTHROPIC_SMALL_FAST_MODEL=${CLAUDE_CODE_SMALL_FAST_MODEL:-arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-1}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+    env_file:
+      - .env.local
     restart: unless-stopped
 
 volumes:

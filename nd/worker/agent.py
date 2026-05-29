@@ -1,6 +1,7 @@
 """Worker agent definition with AgentField reasoners."""
 
 import asyncio
+import os
 import re
 
 import httpx
@@ -153,17 +154,32 @@ def create_worker_agent(
             branch=ws.branch,
             base_branch=ws.base_branch,
             bare_path=ws.bare_path,
+            branch_hash=ws.branch_hash,
         ).model_dump()
 
     @app.reasoner()
-    async def cleanup_workspace(repo_path: str, bare_path: str) -> dict:
+    async def cleanup_workspace(
+        repo_path: str,
+        bare_path: str,
+        branch: str | None = None,
+    ) -> dict:
         """Best-effort worktree teardown after task completion.
 
-        Returns ``{"cleaned": bool}`` reflecting whether the underlying
-        ``git worktree remove`` succeeded. ``False`` indicates we had to
-        fall back to ``rm -rf``.
+        Args:
+            repo_path: Path to the worktree to remove
+            bare_path: Path to the bare git repository
+            branch: Optional branch name to delete (only nd/ branches are deleted)
+
+        Returns:
+            ``{"cleaned": bool}`` reflecting whether the underlying
+            ``git worktree remove`` succeeded. ``False`` indicates we had to
+            fall back to ``rm -rf``.
         """
-        cleaned = await workspace.cleanup(repo_path=repo_path, bare_path=bare_path)
+        cleaned = await workspace.cleanup(
+            repo_path=repo_path,
+            bare_path=bare_path,
+            branch=branch,
+        )
         return {"cleaned": cleaned}
 
     @app.reasoner()
@@ -214,7 +230,8 @@ def create_worker_agent(
             The default (``WORKSPACE_KEEP_ON_FAILURE=1``) leaves the worktree
             in place for human inspection. Operators that don't want stale
             worktrees can set ``WORKSPACE_KEEP_ON_FAILURE=0`` to have us
-            clean up here too.
+            clean up here too. This also deletes the nd/ branch to prevent
+            future collisions.
             """
             if config.workspace_keep_on_failure:
                 return
@@ -224,6 +241,7 @@ def create_worker_agent(
                 f"{app.node_id}.cleanup_workspace",
                 repo_path=repo_path,
                 bare_path=ws.bare_path,
+                branch=ws.branch,
             )
 
         # Analyze task
@@ -389,11 +407,13 @@ def create_worker_agent(
 
         # Clean up the worktree only on successful completion. Failed and
         # paused tasks leave the worktree in place for human inspection.
+        # This also deletes the nd/ branch since work is complete.
         if ws.bare_path is not None:
             await app.call(
                 f"{app.node_id}.cleanup_workspace",
                 repo_path=repo_path,
                 bare_path=ws.bare_path,
+                branch=ws.branch,
             )
 
         return ProcessResult(
@@ -607,18 +627,39 @@ Create a detailed spec.""",
         commit_sha: str,
         max_iterations: int = 3,
     ) -> dict:
-        """Run roborev-refine for code quality validation."""
+        """Run roborev-refine for code quality validation via docker exec."""
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "roborev",
-                "refine",
-                "--max-iterations",
-                str(max_iterations),
-                "--wait",
-                cwd=repo_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            # Check if we're in docker by looking for /.dockerenv
+            in_docker = os.path.exists("/.dockerenv")
+
+            if in_docker:
+                # Call roborev via docker exec to the roborev service
+                # The roborev container has the same workspace mounts
+                proc = await asyncio.create_subprocess_exec(
+                    "docker",
+                    "exec",
+                    "-w",
+                    repo_path,  # Set working directory in the target container
+                    config.roborev_container_name,
+                    "roborev",
+                    "refine",
+                    "--max-iterations",
+                    str(max_iterations),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            else:
+                # Running locally, call roborev directly
+                proc = await asyncio.create_subprocess_exec(
+                    "roborev",
+                    "refine",
+                    "--max-iterations",
+                    str(max_iterations),
+                    cwd=repo_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+
             stdout, stderr = await proc.communicate()
 
             passed = proc.returncode == 0
