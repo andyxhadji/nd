@@ -67,7 +67,7 @@ async def test_mock_middleman_basic_operations(mock_middleman):
 async def test_kata_client_basic_operations(kata_client):
     """Test kata client can interact with kata daemon."""
     # Ensure project is initialized
-    await kata_client.ensure_project_initialized("test-infra", "E2E infrastructure test project")
+    await kata_client.ensure_project_initialized("test-infra")
 
     # List tasks (may be empty)
     tasks = await kata_client.list_tasks()

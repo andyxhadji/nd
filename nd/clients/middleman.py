@@ -37,30 +37,49 @@ class MRComment:
             created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
 
         # Activity endpoint uses item_* fields, direct comment uses mr_* fields
-        mr_number = data.get("mr_number") or data.get("item_number")
+        mr_number = data.get("mr_number")
         if mr_number is None:
-            raise ValueError(f"Missing required field: mr_number/item_number in {data}")
-        mr_title = data.get("mr_title") or data.get("item_title")
+            mr_number = data.get("item_number")
+        if mr_number is None:
+            raise ValueError("Missing required field: mr_number/item_number")
+
+        mr_title = data.get("mr_title")
         if mr_title is None:
-            raise ValueError(f"Missing required field: mr_title/item_title in {data}")
-        mr_url = data.get("mr_url") or data.get("item_url")
+            mr_title = data.get("item_title")
+        if mr_title is None:
+            raise ValueError("Missing required field: mr_title/item_title")
+
+        mr_url = data.get("mr_url")
         if mr_url is None:
-            raise ValueError(f"Missing required field: mr_url/item_url in {data}")
+            mr_url = data.get("item_url")
+        if mr_url is None:
+            raise ValueError("Missing required field: mr_url/item_url")
 
         # Extract platform info from nested repo object if present
         repo = data.get("repo", {})
-        platform = data.get("platform") or repo.get("provider")
+        platform = data.get("platform")
         if platform is None:
-            raise ValueError(f"Missing required field: platform/provider in {data}")
-        platform_host = data.get("platform_host") or repo.get("platform_host")
+            platform = repo.get("provider")
+        if platform is None:
+            raise ValueError("Missing required field: platform/provider")
+
+        platform_host = data.get("platform_host")
         if platform_host is None:
-            raise ValueError(f"Missing required field: platform_host in {data}")
-        repo_owner = data.get("repo_owner") or repo.get("owner")
+            platform_host = repo.get("platform_host")
+        if platform_host is None:
+            raise ValueError("Missing required field: platform_host")
+
+        repo_owner = data.get("repo_owner")
         if repo_owner is None:
-            raise ValueError(f"Missing required field: repo_owner/owner in {data}")
-        repo_name = data.get("repo_name") or repo.get("name")
+            repo_owner = repo.get("owner")
+        if repo_owner is None:
+            raise ValueError("Missing required field: repo_owner/owner")
+
+        repo_name = data.get("repo_name")
         if repo_name is None:
-            raise ValueError(f"Missing required field: repo_name/name in {data}")
+            repo_name = repo.get("name")
+        if repo_name is None:
+            raise ValueError("Missing required field: repo_name/name")
 
         return cls(
             id=str(data["id"]),
