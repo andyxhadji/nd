@@ -385,7 +385,7 @@ class KataTestClient:
     def __init__(self, env: E2EEnvironment):
         self.env = env
 
-    async def ensure_project_initialized(self, project: str, description: str = "") -> None:
+    async def ensure_project_initialized(self, project: str) -> None:
         """Ensure a kata project is initialized."""
         # Check if project exists
         cmd = ["kata", "list", "--project", project, "--json"]
@@ -394,7 +394,6 @@ class KataTestClient:
         # If project not initialized, create it
         if rc != 0 and ("project_not_initialized" in stderr or "no .kata.toml" in stderr):
             init_cmd = ["kata", "init", project]
-            # Note: kata init doesn't support --description flag
 
             rc, stdout, stderr = await self.env.exec("kata-daemon", init_cmd)
             if rc != 0:

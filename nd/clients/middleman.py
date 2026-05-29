@@ -38,15 +38,29 @@ class MRComment:
 
         # Activity endpoint uses item_* fields, direct comment uses mr_* fields
         mr_number = data.get("mr_number") or data.get("item_number")
+        if mr_number is None:
+            raise ValueError(f"Missing required field: mr_number/item_number in {data}")
         mr_title = data.get("mr_title") or data.get("item_title")
+        if mr_title is None:
+            raise ValueError(f"Missing required field: mr_title/item_title in {data}")
         mr_url = data.get("mr_url") or data.get("item_url")
+        if mr_url is None:
+            raise ValueError(f"Missing required field: mr_url/item_url in {data}")
 
         # Extract platform info from nested repo object if present
         repo = data.get("repo", {})
         platform = data.get("platform") or repo.get("provider")
+        if platform is None:
+            raise ValueError(f"Missing required field: platform/provider in {data}")
         platform_host = data.get("platform_host") or repo.get("platform_host")
+        if platform_host is None:
+            raise ValueError(f"Missing required field: platform_host in {data}")
         repo_owner = data.get("repo_owner") or repo.get("owner")
+        if repo_owner is None:
+            raise ValueError(f"Missing required field: repo_owner/owner in {data}")
         repo_name = data.get("repo_name") or repo.get("name")
+        if repo_name is None:
+            raise ValueError(f"Missing required field: repo_name/name in {data}")
 
         return cls(
             id=str(data["id"]),
