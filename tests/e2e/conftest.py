@@ -126,8 +126,13 @@ async def _wait_for_services(service_urls: dict[str, str], timeout: int):
                 try:
                     # AgentField doesn't have /health, check root instead
                     endpoint = "/" if name == "agentfield" else "/health"
-                    resp = await client.get(f"{url}{endpoint}", timeout=2.0)
-                    if resp.status_code != 200:
+                    resp = await client.get(f"{url}{endpoint}", timeout=2.0, follow_redirects=False)
+                    # AgentField returns 301 for root, which is fine
+                    if name == "agentfield":
+                        if resp.status_code not in (200, 301):
+                            all_ready = False
+                            break
+                    elif resp.status_code != 200:
                         all_ready = False
                         break
                 except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError):
