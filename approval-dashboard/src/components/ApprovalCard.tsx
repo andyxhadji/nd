@@ -63,8 +63,10 @@ export function ApprovalCard({ approval, trace }: ApprovalCardProps) {
 
       {/* Task Info */}
       <div className="mb-4">
-        <h3 className="font-semibold text-lg text-gray-900">{approval.taskTitle}</h3>
-        <p className="text-sm text-gray-600">{approval.projectName}</p>
+        <h3 className="font-semibold text-lg text-gray-900 break-words">
+          {approval.originalComment || approval.taskTitle}
+        </h3>
+        <p className="text-sm text-gray-600 mt-1">{approval.projectName} · Task {approval.taskId}</p>
       </div>
 
       {/* Type-Specific Content */}

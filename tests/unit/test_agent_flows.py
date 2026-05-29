@@ -634,6 +634,7 @@ async def test_execute_changes_fails_when_harness_makes_no_changes(monkeypatch, 
         "success": False,
         "files_changed": [],
         "commit_sha": None,
+        "diff": None,
         "error": "harness completed without producing changes",
     }
 

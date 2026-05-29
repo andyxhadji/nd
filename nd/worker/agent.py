@@ -594,10 +594,20 @@ Create a detailed spec.""",
             )
             files_changed = [f for f in files_text.splitlines() if f] if rc_files == 0 else []
 
+            # Get full diff
+            rc_diff, diff_text = await _git(
+                [
+                    "diff",
+                    f"{before_sha}..HEAD",
+                ],
+            )
+            diff = diff_text if rc_diff == 0 else None
+
             return ExecutionResult(
                 success=True,
                 files_changed=files_changed,
                 commit_sha=commit_sha,
+                diff=diff,
             ).model_dump()
 
         except (TimeoutError, httpx.TimeoutException) as e:

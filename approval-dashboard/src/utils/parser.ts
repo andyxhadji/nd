@@ -121,9 +121,45 @@ async function parseSpecContext(data: any): Promise<SpecReviewContext | undefine
   }
 }
 
-async function parseRoborevContext(_data: any): Promise<RoborevContext | undefined> {
-  // Would need to fetch the full trace from other executions
-  return undefined;
+async function parseRoborevContext(data: any): Promise<RoborevContext | undefined> {
+  // Extract roborev details from sibling executions in the DAG
+  if (!data.dag) return undefined;
+
+  // Find the process_task execution (parent of waiting execution)
+  const processTask = findExecutionInDAG(data.dag, data.execution_id);
+  if (!processTask || !processTask.children) return undefined;
+
+  // Find run_roborev execution
+  const roborevExec = processTask.children.find((child: any) =>
+    child.reasoner_id === 'run_roborev' && child.status === 'succeeded'
+  );
+
+  // Find execute_changes execution
+  const executeExec = processTask.children.find((child: any) =>
+    child.reasoner_id === 'execute_changes' && child.status === 'succeeded'
+  );
+
+  if (!roborevExec) return undefined;
+
+  try {
+    // Fetch execution details to get the output_data
+    const roborevDetails = await fetchExecutionDetails(roborevExec.execution_id);
+    const executeDetails = executeExec ? await fetchExecutionDetails(executeExec.execution_id) : null;
+
+    const roborevOutput = roborevDetails.output_data || {};
+
+    return {
+      passed: roborevOutput.passed || false,
+      iterations: roborevOutput.iterations || 0,
+      findings: roborevOutput.final_findings || [],
+      filesChanged: executeDetails?.output_data?.files_changed || [],
+      commitSha: executeDetails?.output_data?.commit_sha || '',
+      diff: executeDetails?.output_data?.diff,
+    };
+  } catch (error) {
+    console.error('Failed to fetch execution details for roborev context:', error);
+    return undefined;
+  }
 }
 
 async function parseResponseContext(data: any): Promise<ResponseContext | undefined> {

@@ -362,13 +362,21 @@ class WorkspaceClient:
         """Push the prepared worktree branch back to origin."""
         env_overrides, askpass_tmpdir = _askpass_env(platform, self.github_token, self.gitlab_token)
         try:
+            # Try regular push first
             rc, _, err = await self._run(
                 ["git", "-C", repo_path, "push", "origin", f"HEAD:{branch}"],
                 env=env_overrides,
             )
             if rc != 0:
-                logger.warning("git push failed: %s", err.strip())
-                return False
+                # If push failed, try force push (branch may have been updated by roborev iterations)
+                logger.info("Regular push failed, attempting force push: %s", err.strip())
+                rc, _, err = await self._run(
+                    ["git", "-C", repo_path, "push", "--force", "origin", f"HEAD:{branch}"],
+                    env=env_overrides,
+                )
+                if rc != 0:
+                    logger.warning("Force push failed: %s", err.strip())
+                    return False
             return True
         finally:
             if askpass_tmpdir is not None:
