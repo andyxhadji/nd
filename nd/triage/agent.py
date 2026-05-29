@@ -79,7 +79,7 @@ def create_triage_agent(
         try:
             comments = await middleman.get_comments_since(
                 since=last_poll,
-                current_user=config.current_user,
+                current_users=config.current_users,
             )
         except Exception as e:
             return PollResult(

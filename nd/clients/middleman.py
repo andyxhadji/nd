@@ -27,25 +27,42 @@ class MRComment:
 
     @classmethod
     def from_dict(cls, data: dict) -> "MRComment":
-        """Create from API response dict."""
+        """Create from API response dict.
+
+        Handles both activity endpoint format (item_number/item_title/item_url)
+        and direct comment format (mr_number/mr_title/mr_url).
+        """
         created_at = data["created_at"]
         if isinstance(created_at, str):
             created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+
+        # Activity endpoint uses item_* fields, direct comment uses mr_* fields
+        mr_number = data.get("mr_number") or data.get("item_number")
+        mr_title = data.get("mr_title") or data.get("item_title")
+        mr_url = data.get("mr_url") or data.get("item_url")
+
+        # Extract platform info from nested repo object if present
+        repo = data.get("repo", {})
+        platform = data.get("platform") or repo.get("provider")
+        platform_host = data.get("platform_host") or repo.get("platform_host")
+        repo_owner = data.get("repo_owner") or repo.get("owner")
+        repo_name = data.get("repo_name") or repo.get("name")
+
         return cls(
             id=str(data["id"]),
             body=data["body"],
             author=data["author"],
             created_at=created_at,
             dedupe_key=data["dedupe_key"],
-            mr_number=int(data["mr_number"]),
-            mr_title=data["mr_title"],
-            mr_url=data["mr_url"],
-            head_branch=data["head_branch"],
-            base_branch=data["base_branch"],
-            platform=data["platform"],
-            platform_host=data["platform_host"],
-            repo_owner=data["repo_owner"],
-            repo_name=data["repo_name"],
+            mr_number=int(mr_number),
+            mr_title=mr_title,
+            mr_url=mr_url,
+            head_branch=data.get("head_branch", ""),
+            base_branch=data.get("base_branch", ""),
+            platform=platform,
+            platform_host=platform_host,
+            repo_owner=repo_owner,
+            repo_name=repo_name,
         )
 
 
@@ -132,12 +149,20 @@ class MiddlemanClient:
     async def get_comments_since(
         self,
         since: datetime,
-        current_user: str,
+        current_users: list[str] | None = None,
     ) -> list[MRComment]:
-        """Fetch comments on user's MRs since the given timestamp."""
+        """Fetch comments on MRs authored by any of the current_users since the given timestamp.
+
+        Args:
+            since: Fetch comments created after this timestamp
+            current_users: List of usernames to filter MRs by author. If None or empty, no filtering.
+
+        Returns:
+            List of MRComment objects for comments on MRs where the author is in current_users
+        """
         client = await self._get_client()
         params = {
-            "types": "issue_comment",
+            "types": "comment",
             "since": since.isoformat(),
         }
         response = await client.get("/api/v1/activity", params=params)
@@ -145,8 +170,10 @@ class MiddlemanClient:
 
         comments = []
         for item in response.json().get("items", []):
-            # Filter to comments on MRs where current_user is author
-            if item.get("mr_author") == current_user:
+            # Filter to comments on MRs where author is in current_users
+            # If current_users is None or empty, include all comments
+            mr_author = item.get("mr_author")
+            if not current_users or (mr_author and mr_author in current_users):
                 comments.append(MRComment.from_dict(item))
         return comments
 
