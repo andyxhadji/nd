@@ -122,13 +122,15 @@ async def _wait_for_services(service_urls: dict[str, str], timeout: int):
         while (asyncio.get_event_loop().time() - start) < timeout:
             all_ready = True
 
-            for _name, url in service_urls.items():
+            for name, url in service_urls.items():
                 try:
-                    resp = await client.get(f"{url}/health", timeout=2.0)
+                    # AgentField doesn't have /health, check root instead
+                    endpoint = "/" if name == "agentfield" else "/health"
+                    resp = await client.get(f"{url}{endpoint}", timeout=2.0)
                     if resp.status_code != 200:
                         all_ready = False
                         break
-                except (httpx.ConnectError, httpx.TimeoutException):
+                except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError):
                     all_ready = False
                     break
 
