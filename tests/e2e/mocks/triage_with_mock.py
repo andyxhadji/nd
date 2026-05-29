@@ -10,8 +10,12 @@ import sys
 # Add project root to path
 sys.path.insert(0, "/app")
 
-# Import agent
-from nd.triage.agent import app
+# Import agent factory
+from nd.config import config
+from nd.triage.agent import create_triage_agent
+
+# Create agent instance
+app = create_triage_agent()
 
 # Patch with mock LLM if requested
 if os.getenv("USE_MOCK_LLM"):
@@ -24,4 +28,7 @@ else:
 
 # Run the agent
 if __name__ == "__main__":
-    app.run()
+    if config.agent_port:
+        app.run(host="0.0.0.0", port=config.agent_port, auto_port=False)
+    else:
+        app.run(auto_port=True)
