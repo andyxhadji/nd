@@ -42,7 +42,7 @@ jobs:
 
       - name: Start E2E environment
         run: |
-          docker-compose -f tests/e2e/docker-compose.e2e.yml up -d
+          docker compose -f tests/e2e/docker compose.e2e.yml up -d
 
       - name: Wait for services
         run: |
@@ -58,8 +58,8 @@ jobs:
       - name: Collect logs on failure
         if: failure()
         run: |
-          echo "Collecting docker-compose logs..."
-          docker-compose -f tests/e2e/docker-compose.e2e.yml logs --tail=500 > e2e-logs.txt
+          echo "Collecting docker compose logs..."
+          docker compose -f tests/e2e/docker compose.e2e.yml logs --tail=500 > e2e-logs.txt
 
       - name: Upload logs
         if: failure()
@@ -72,7 +72,7 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker-compose -f tests/e2e/docker-compose.e2e.yml down -v
+          docker compose -f tests/e2e/docker compose.e2e.yml down -v
 
   e2e-summary:
     name: E2E Test Summary

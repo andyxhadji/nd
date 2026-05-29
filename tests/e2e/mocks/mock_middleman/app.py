@@ -79,10 +79,15 @@ async def get_comments(
     for comment in _comments:
         # Filter by timestamp
         if since_dt:
-            comment_dt = datetime.fromisoformat(
-                comment.get("created_at", "").replace("Z", "+00:00")
-            )
-            if comment_dt <= since_dt:
+            try:
+                comment_dt = datetime.fromisoformat(
+                    comment.get("created_at", "").replace("Z", "+00:00")
+                )
+                if comment_dt <= since_dt:
+                    continue
+            except ValueError:
+                # Skip comments with invalid timestamps
+                logger.warning(f"Invalid timestamp in comment: {comment.get('created_at')}")
                 continue
 
         # Filter by current_user (skip if author matches current_user)

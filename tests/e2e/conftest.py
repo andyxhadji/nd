@@ -87,7 +87,7 @@ async def e2e_env(compose_file, service_urls, e2e_timeout, use_running_agent):
         )
         await proc.communicate()
 
-        if proc.returncode != 0:
+        if proc.returncode is not None and proc.returncode != 0:
             pytest.fail("Failed to start E2E docker-compose environment")
 
     # Wait for services to be healthy
@@ -150,16 +150,15 @@ class E2EEnvironment:
     def agent(self) -> Agent:
         """Get or create agent for making cross-agent calls."""
         if self._agent is None:
+            # Default to OpenRouter for portability across AWS accounts
+            default_model = "openrouter/google/gemini-2.0-flash-exp:free"
+            model = os.getenv("WORKER_MODEL", default_model)
+
             self._agent = Agent(
                 node_id="e2e-test-controller",
                 version="1.0.0",
                 agentfield_server=self.service_urls["agentfield"],
-                ai_config=AIConfig(
-                    model=os.getenv(
-                        "WORKER_MODEL",
-                        "bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr",
-                    )
-                ),
+                ai_config=AIConfig(model=model),
             )
         return self._agent
 
@@ -340,7 +339,13 @@ class KataTestClient:
         if rc != 0:
             raise RuntimeError(f"kata list failed: {stderr}")
 
-        return json.loads(stdout) if stdout.strip() else []
+        if not stdout.strip():
+            return []
+
+        try:
+            return json.loads(stdout)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Failed to parse kata output as JSON: {e}\nOutput: {stdout}")
 
     async def show_task(self, task_id: str) -> dict:
         """Show task details."""
@@ -349,7 +354,10 @@ class KataTestClient:
         if rc != 0:
             raise RuntimeError(f"kata show failed: {stderr}")
 
-        return json.loads(stdout)
+        try:
+            return json.loads(stdout)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Failed to parse kata output as JSON: {e}\nOutput: {stdout}")
 
     async def create_task(
         self,
