@@ -40,15 +40,6 @@ jobs:
           ND_ASSIGNED_USERNAMES=test-user,reviewer
           EOF
 
-      - name: Start E2E environment
-        run: |
-          docker compose -f tests/e2e/docker-compose.e2e.yml up -d
-
-      - name: Wait for services
-        run: |
-          chmod +x tests/e2e/scripts/wait-for-services.sh
-          tests/e2e/scripts/wait-for-services.sh
-
       - name: Run E2E tests
         run: |
           pytest tests/e2e/ -v --tb=short --e2e-timeout=300
@@ -68,11 +59,6 @@ jobs:
           name: e2e-logs
           path: e2e-logs.txt
           retention-days: 7
-
-      - name: Cleanup
-        if: always()
-        run: |
-          docker compose -f tests/e2e/docker-compose.e2e.yml down -v
 
   e2e-summary:
     name: E2E Test Summary
