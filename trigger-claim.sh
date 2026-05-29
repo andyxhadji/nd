@@ -5,7 +5,7 @@ RUN_ID=$(curl -s -X POST "http://localhost:8081/api/v1/agentic/invoke" \
   -H "Content-Type: application/json" \
   -d '{
     "invocation_target": "nd-worker:claim_task",
-    "input_data": {"payload": ""}
+    "input_data": {"payload": null}
   }' | jq -r '.run_id // empty')
 
 if [ -n "$RUN_ID" ]; then
