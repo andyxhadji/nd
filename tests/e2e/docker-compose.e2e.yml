@@ -23,12 +23,13 @@ services:
       context: ../..
       dockerfile: Dockerfile
     entrypoint: []
-    command: ["kata", "daemon", "start", "--listen", "127.0.0.1:7878"]
+    command: ["sh", "-c", "kata daemon start --listen 127.0.0.1:7878 & sleep 5 && /app/tests/e2e/scripts/init-kata.sh && wait"]
     environment:
       - KATA_HOME=/kata-home
       - KATA_DB=/kata-home/kata-test.db
     volumes:
       - kata-data:/kata-home
+      - ../../tests/e2e/scripts:/app/tests/e2e/scripts:ro
     healthcheck:
       test: ["CMD", "kata", "version"]
       interval: 5s

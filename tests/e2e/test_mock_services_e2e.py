@@ -9,7 +9,6 @@ import pytest
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Requires E2E docker-compose services running")
 async def test_mock_middleman_seed_and_query(mock_middleman):
     """Test that we can seed and query mock middleman."""
     # Reset first

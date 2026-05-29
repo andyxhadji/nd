@@ -213,10 +213,11 @@ class E2EEnvironment:
             import concurrent.futures
 
             # Cancel the future running in executor
-            self._agent_task.cancel()
             try:
+                self._agent_task.cancel()
                 await self._agent_task
-            except (asyncio.CancelledError, concurrent.futures.CancelledError):
+            except (asyncio.CancelledError, concurrent.futures.CancelledError, RuntimeError):
+                # RuntimeError: Event loop is closed - can happen during teardown
                 pass
 
     async def exec(self, service: str, cmd: list[str]) -> tuple[int, str, str]:
@@ -384,6 +385,21 @@ class KataTestClient:
     def __init__(self, env: E2EEnvironment):
         self.env = env
 
+    async def ensure_project_initialized(self, project: str, description: str = "") -> None:
+        """Ensure a kata project is initialized."""
+        # Check if project exists
+        cmd = ["kata", "list", "--project", project, "--json"]
+        rc, stdout, stderr = await self.env.exec("kata-daemon", cmd)
+
+        # If project not initialized, create it
+        if rc != 0 and ("project_not_initialized" in stderr or "no .kata.toml" in stderr):
+            init_cmd = ["kata", "init", project]
+            # Note: kata init doesn't support --description flag
+
+            rc, stdout, stderr = await self.env.exec("kata-daemon", init_cmd)
+            if rc != 0:
+                raise RuntimeError(f"kata init failed: {stderr}")
+
     async def list_tasks(self, project: str | None = None) -> list[dict]:
         """List tasks in kata."""
         cmd = ["kata", "list", "--json"]
@@ -392,6 +408,10 @@ class KataTestClient:
 
         rc, stdout, stderr = await self.env.exec("kata-daemon", cmd)
         if rc != 0:
+            # Check if it's a project not initialized error
+            if "project_not_initialized" in stderr or "no .kata.toml ancestor" in stderr:
+                # Return empty list for uninitialized projects
+                return []
             raise RuntimeError(f"kata list failed: {stderr}")
 
         if not stdout.strip():
