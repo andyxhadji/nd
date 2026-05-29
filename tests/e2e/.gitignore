@@ -1,0 +1,9 @@
+# E2E test artifacts
+e2e-logs.txt
+*.pyc
+__pycache__/
+.pytest_cache/
+*.log
+
+# Don't ignore example files
+!example_test.py

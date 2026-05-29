@@ -1,0 +1,54 @@
+{
+  "name": "Issue assignment flow",
+  "description": "Issue assigned to user should be converted to task and processed",
+  "initial_state": {
+    "issues": [
+      {
+        "number": 102,
+        "title": "Fix memory leak in cache",
+        "body": "The cache is not releasing memory properly. Investigate and fix.\n\nSteps to reproduce:\n1. Start the application\n2. Run the test suite\n3. Check memory usage\n\nExpected: Memory should be released after tests\nActual: Memory keeps growing",
+        "url": "https://github.com/test-org/test-repo/issues/102",
+        "author": "developer2",
+        "assignees": ["test-user"],
+        "platform": "github",
+        "platform_host": "github.com",
+        "repo_owner": "test-org",
+        "repo_name": "test-repo"
+      }
+    ]
+  },
+  "expected_flow": [
+    {
+      "step": "triage_poll_issues",
+      "agent": "triage",
+      "reasoner": "poll_issues",
+      "expected_result": {
+        "issues_found": 1,
+        "tasks_created": 1
+      }
+    },
+    {
+      "step": "worker_claim",
+      "agent": "worker",
+      "reasoner": "claim_task",
+      "expected_result": {
+        "claimed": true
+      }
+    },
+    {
+      "step": "workspace_prep",
+      "agent": "worker",
+      "reasoner": "prepare_workspace",
+      "expected_result": {
+        "prepared": true,
+        "branch": "nd/issue-*"
+      }
+    }
+  ],
+  "assertions": {
+    "task_created": true,
+    "task_has_from_issue_label": true,
+    "worker_claimed": true,
+    "workspace_on_new_branch": true
+  }
+}

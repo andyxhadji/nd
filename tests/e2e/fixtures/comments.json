@@ -1,0 +1,58 @@
+[
+  {
+    "body": "Can you add a log statement here to track the execution flow?",
+    "author": "reviewer1",
+    "mr_title": "Add new feature",
+    "mr_number": 42,
+    "mr_url": "https://github.com/test-org/test-repo/pull/42",
+    "head_branch": "feature/new-feature",
+    "base_branch": "main",
+    "platform": "github",
+    "platform_host": "github.com",
+    "repo_owner": "test-org",
+    "repo_name": "test-repo",
+    "dedupe_key": "github:github.com:test-org:test-repo:42:comment-1:thread-abc"
+  },
+  {
+    "body": "LGTM! Great work!",
+    "author": "reviewer2",
+    "mr_title": "Fix bug in parser",
+    "mr_number": 43,
+    "mr_url": "https://github.com/test-org/test-repo/pull/43",
+    "head_branch": "fix/parser-bug",
+    "base_branch": "main",
+    "platform": "github",
+    "platform_host": "github.com",
+    "repo_owner": "test-org",
+    "repo_name": "test-repo",
+    "dedupe_key": "github:github.com:test-org:test-repo:43:comment-2:thread-def"
+  },
+  {
+    "body": "Could you refactor this to use async/await?",
+    "author": "reviewer3",
+    "mr_title": "Improve performance",
+    "mr_number": 44,
+    "mr_url": "https://gitlab.com/test-org/test-repo/-/merge_requests/44",
+    "head_branch": "perf/improvements",
+    "base_branch": "main",
+    "platform": "gitlab",
+    "platform_host": "gitlab.com",
+    "repo_owner": "test-org",
+    "repo_name": "test-repo",
+    "dedupe_key": "gitlab:gitlab.com:test-org:test-repo:44:comment-3:thread-ghi"
+  },
+  {
+    "body": "Why did you choose this approach instead of X?",
+    "author": "reviewer1",
+    "mr_title": "Add new feature",
+    "mr_number": 42,
+    "mr_url": "https://github.com/test-org/test-repo/pull/42",
+    "head_branch": "feature/new-feature",
+    "base_branch": "main",
+    "platform": "github",
+    "platform_host": "github.com",
+    "repo_owner": "test-org",
+    "repo_name": "test-repo",
+    "dedupe_key": "github:github.com:test-org:test-repo:42:comment-4:thread-jkl"
+  }
+]

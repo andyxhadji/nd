@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install --no-cache-dir fastapi uvicorn pydantic
+
+# Copy application
+COPY app.py .
+
+# Expose port
+EXPOSE 8091
+
+# Run the application
+CMD ["python", "app.py"]

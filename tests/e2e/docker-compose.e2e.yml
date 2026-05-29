@@ -1,0 +1,164 @@
+version: '3.8'
+
+services:
+  # AgentField control plane
+  agentfield:
+    image: agentfield/control-plane:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - agentfield-data:/data
+    environment:
+      - DATABASE_URL=sqlite:///data/agentfield-test.db
+      - LOG_LEVEL=info
+      - AGENTFIELD_APPROVAL_WEBHOOK_SECRET=nd-e2e-test-secret
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # Kata daemon
+  kata-daemon:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    entrypoint: []
+    command: ["kata", "daemon", "start", "--listen", "127.0.0.1:7878"]
+    environment:
+      - KATA_HOME=/kata-home
+      - KATA_DB=/kata-home/kata-test.db
+    volumes:
+      - kata-data:/kata-home
+    healthcheck:
+      test: ["CMD", "kata", "version"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # Triage agent
+  triage:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: python -m nd.triage
+    network_mode: "service:kata-daemon"
+    environment:
+      - AGENTFIELD_URL=http://agentfield:8080
+      - AGENT_PORT=8001
+      - AGENT_CALLBACK_URL=http://kata-daemon:8001
+      - MIDDLEMAN_URL=http://mock-middleman:8091
+      - KATA_SERVER=http://127.0.0.1:7878
+      - TRIAGE_MODEL=${TRIAGE_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - ND_CURRENT_USER=${ND_CURRENT_USER:-test-user}
+      - ND_ASSIGNED_USERNAMES=${ND_ASSIGNED_USERNAMES:-test-user,reviewer}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    env_file:
+      - ../../.env.local
+    depends_on:
+      - agentfield
+      - kata-daemon
+      - mock-middleman
+    restart: unless-stopped
+
+  # Worker agent
+  worker:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: python -m nd.worker
+    network_mode: "service:kata-daemon"
+    volumes:
+      - worker-workspace:/var/nd
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - AGENTFIELD_URL=http://agentfield:8080
+      - AGENT_PORT=8002
+      - AGENT_CALLBACK_URL=http://kata-daemon:8002
+      - KATA_SERVER=http://127.0.0.1:7878
+      - WORKER_MODEL=${WORKER_MODEL:-bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - AGENT_INSTANCE_ID=worker-e2e
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}
+      - ROBOREV_MAX_ITERATIONS=${ROBOREV_MAX_ITERATIONS:-3}
+      - WORKSPACE_ROOT=/var/nd
+      - WORKSPACE_KEEP_ON_FAILURE=true
+      - GITHUB_TOKEN=mock-github-token
+      - GITLAB_TOKEN=mock-gitlab-token
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-1}
+      - ANTHROPIC_MODEL=${CLAUDE_CODE_MODEL:-arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - ANTHROPIC_SMALL_FAST_MODEL=${CLAUDE_CODE_SMALL_FAST_MODEL:-arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+    env_file:
+      - ../../.env.local
+    depends_on:
+      - agentfield
+      - kata-daemon
+      - mock-github
+      - mock-gitlab
+    restart: unless-stopped
+
+  # Roborev service for code quality checks
+  roborev:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    entrypoint: []
+    command: ["tail", "-f", "/dev/null"]
+    volumes:
+      - worker-workspace:/var/nd
+    environment:
+      - ANTHROPIC_MODEL=${CLAUDE_CODE_MODEL:-arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-1}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    env_file:
+      - ../../.env.local
+    restart: unless-stopped
+
+  # Mock Middleman API
+  mock-middleman:
+    build:
+      context: ./mocks/mock_middleman
+      dockerfile: Dockerfile
+    ports:
+      - "8091:8091"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # Mock GitHub API
+  mock-github:
+    build:
+      context: ./mocks/mock_github
+      dockerfile: Dockerfile
+    ports:
+      - "8092:8092"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8092/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # Mock GitLab API
+  mock-gitlab:
+    build:
+      context: ./mocks/mock_gitlab
+      dockerfile: Dockerfile
+    ports:
+      - "8093:8093"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8093/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  agentfield-data:
+  kata-data:
+  worker-workspace:
