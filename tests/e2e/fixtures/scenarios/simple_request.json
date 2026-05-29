@@ -1,0 +1,66 @@
+{
+  "name": "Simple request flow",
+  "description": "Reviewer requests adding a log statement - should be classified as actionable and processed automatically",
+  "initial_state": {
+    "comments": [
+      {
+        "body": "Can you add a log statement here to track the execution flow?",
+        "author": "reviewer1",
+        "mr_title": "Add new feature",
+        "mr_number": 42,
+        "mr_url": "https://github.com/test-org/test-repo/pull/42",
+        "head_branch": "feature/new-feature",
+        "base_branch": "main",
+        "platform": "github",
+        "platform_host": "github.com",
+        "repo_owner": "test-org",
+        "repo_name": "test-repo",
+        "dedupe_key": "github:github.com:test-org:test-repo:42:comment-1:thread-abc"
+      }
+    ]
+  },
+  "expected_flow": [
+    {
+      "step": "triage_poll",
+      "agent": "triage",
+      "reasoner": "poll_comments",
+      "expected_result": {
+        "comments_found": 1,
+        "tasks_created": 1
+      }
+    },
+    {
+      "step": "triage_classify",
+      "agent": "triage",
+      "reasoner": "classify_actionable",
+      "expected_result": {
+        "actionable": true,
+        "category": "request"
+      }
+    },
+    {
+      "step": "worker_claim",
+      "agent": "worker",
+      "reasoner": "claim_task",
+      "expected_result": {
+        "claimed": true
+      }
+    },
+    {
+      "step": "worker_analyze",
+      "agent": "worker",
+      "reasoner": "analyze_task",
+      "expected_result": {
+        "complexity": "<=3",
+        "confidence": ">=70"
+      }
+    }
+  ],
+  "assertions": {
+    "task_created": true,
+    "task_has_nd_label": true,
+    "worker_claimed": true,
+    "analysis_confident": true,
+    "no_spec_pause": true
+  }
+}

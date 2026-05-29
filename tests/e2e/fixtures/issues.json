@@ -1,0 +1,38 @@
+[
+  {
+    "number": 101,
+    "title": "Add support for custom themes",
+    "body": "We need to allow users to customize the UI theme. Please implement:\n1. Theme configuration schema\n2. Theme loader\n3. Apply theme to components",
+    "url": "https://github.com/test-org/test-repo/issues/101",
+    "author": "product-manager",
+    "assignees": ["test-user", "developer1"],
+    "platform": "github",
+    "platform_host": "github.com",
+    "repo_owner": "test-org",
+    "repo_name": "test-repo"
+  },
+  {
+    "number": 102,
+    "title": "Fix memory leak in cache",
+    "body": "The cache is not releasing memory properly. Investigate and fix.",
+    "url": "https://github.com/test-org/test-repo/issues/102",
+    "author": "developer2",
+    "assignees": ["test-user"],
+    "platform": "github",
+    "platform_host": "github.com",
+    "repo_owner": "test-org",
+    "repo_name": "test-repo"
+  },
+  {
+    "number": 103,
+    "title": "Update documentation for API v2",
+    "body": "API v2 docs are outdated. Update examples and parameter descriptions.",
+    "url": "https://gitlab.com/test-org/test-repo/-/issues/103",
+    "author": "tech-writer",
+    "assignees": ["reviewer"],
+    "platform": "gitlab",
+    "platform_host": "gitlab.com",
+    "repo_owner": "test-org",
+    "repo_name": "test-repo"
+  }
+]

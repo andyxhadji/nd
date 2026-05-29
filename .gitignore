@@ -31,3 +31,4 @@ test-local.sh
 
 # Local worker workspace bind mount
 .nd-workspace/
+.env.local.test

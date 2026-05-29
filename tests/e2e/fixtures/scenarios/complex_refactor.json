@@ -1,0 +1,62 @@
+{
+  "name": "Complex refactor with spec review",
+  "description": "Complex refactoring request that should trigger spec review approval gate",
+  "initial_state": {
+    "comments": [
+      {
+        "body": "Could you refactor this entire module to use async/await and add proper error handling with retries?",
+        "author": "reviewer3",
+        "mr_title": "Improve performance",
+        "mr_number": 44,
+        "mr_url": "https://github.com/test-org/test-repo/pull/44",
+        "head_branch": "perf/improvements",
+        "base_branch": "main",
+        "platform": "github",
+        "platform_host": "github.com",
+        "repo_owner": "test-org",
+        "repo_name": "test-repo",
+        "dedupe_key": "github:github.com:test-org:test-repo:44:comment-3:thread-ghi"
+      }
+    ]
+  },
+  "expected_flow": [
+    {
+      "step": "triage_poll",
+      "agent": "triage",
+      "reasoner": "poll_comments",
+      "expected_result": {
+        "comments_found": 1,
+        "tasks_created": 1
+      }
+    },
+    {
+      "step": "worker_claim",
+      "agent": "worker",
+      "reasoner": "claim_task",
+      "expected_result": {
+        "claimed": true
+      }
+    },
+    {
+      "step": "worker_analyze",
+      "agent": "worker",
+      "reasoner": "analyze_task",
+      "expected_result": {
+        "complexity": ">=4",
+        "confidence": "<70"
+      }
+    },
+    {
+      "step": "spec_pause",
+      "agent": "worker",
+      "action": "pause_for_spec_review",
+      "expected": true
+    }
+  ],
+  "assertions": {
+    "task_created": true,
+    "worker_claimed": true,
+    "spec_generated": true,
+    "paused_for_spec": true
+  }
+}
