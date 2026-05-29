@@ -206,8 +206,6 @@ async def test_duplicate_comment_handling(
 @pytest.mark.asyncio
 async def test_worker_no_tasks_available(e2e_env, kata_client):
     """Test worker behavior when no tasks are available to claim."""
-    # Ensure no unowned nd tasks exist
-    tasks = await kata_client.list_tasks()
     # We can't easily ensure zero tasks in shared env, so just verify claim behavior
 
     result = await e2e_env.call("nd-worker.claim_task", payload=None)

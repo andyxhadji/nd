@@ -127,7 +127,6 @@ def test_documentation_exists():
 def test_conftest_structure():
     """Verify conftest.py has required fixtures."""
     import importlib.util
-    import sys
 
     conftest_path = Path(__file__).parent / "conftest.py"
     assert conftest_path.exists(), "conftest.py missing"

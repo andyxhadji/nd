@@ -83,7 +83,7 @@ async def test_draft_response_simple(e2e_env):
 async def test_claim_task_when_available(e2e_env, kata_client):
     """Test claiming a task when one is available."""
     # Create a task
-    task_id = await kata_client.create_task(
+    await kata_client.create_task(
         title="Test task for claiming",
         body="This is a test task",
         project="test-repo",

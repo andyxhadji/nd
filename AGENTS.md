@@ -110,8 +110,9 @@ If you need to add new environment variables:
 3. Add a deterministic helper in `triage/classifier.py` or `worker/analyzer.py` if applicable.
 4. Add the reasoner to `triage/agent.py` or `worker/agent.py`. Tag with `entry` only if it's a polling/claiming entrypoint.
 5. Unit-test the helper and the reasoner wiring under `tests/unit/`.
-6. Run `ruff check . && ruff format --check . && pytest tests/unit` before committing.
-7. **Update both `CLAUDE.md` and `AGENTS.md`** with any relevant changes.
+6. **Lint and format before committing** — run `ruff check .` and `ruff format .` to fix all linting and formatting issues.
+7. **Run tests** — `pytest tests/unit` must pass before committing.
+8. **Update both `CLAUDE.md` and `AGENTS.md`** with any relevant changes.
 
 ## Things to avoid
 

@@ -120,7 +120,7 @@ async def _wait_for_services(service_urls: dict[str, str], timeout: int):
         while (asyncio.get_event_loop().time() - start) < timeout:
             all_ready = True
 
-            for name, url in service_urls.items():
+            for _name, url in service_urls.items():
                 try:
                     resp = await client.get(f"{url}/health", timeout=2.0)
                     if resp.status_code != 200:
@@ -345,7 +345,7 @@ class KataTestClient:
         try:
             return json.loads(stdout)
         except json.JSONDecodeError as e:
-            raise RuntimeError(f"Failed to parse kata output as JSON: {e}\nOutput: {stdout}")
+            raise RuntimeError(f"Failed to parse kata output as JSON: {e}\nOutput: {stdout}") from e
 
     async def show_task(self, task_id: str) -> dict:
         """Show task details."""
@@ -357,7 +357,7 @@ class KataTestClient:
         try:
             return json.loads(stdout)
         except json.JSONDecodeError as e:
-            raise RuntimeError(f"Failed to parse kata output as JSON: {e}\nOutput: {stdout}")
+            raise RuntimeError(f"Failed to parse kata output as JSON: {e}\nOutput: {stdout}") from e
 
     async def create_task(
         self,

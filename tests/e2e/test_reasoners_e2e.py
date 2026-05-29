@@ -40,7 +40,9 @@ async def test_triage_classify_with_various_inputs(e2e_env):
         )
 
         assert result["actionable"] == case["expected_actionable"], f"Failed for: {case['body']}"
-        assert result["category"] == case["expected_category"], f"Wrong category for: {case['body']}"
+        assert result["category"] == case["expected_category"], (
+            f"Wrong category for: {case['body']}"
+        )
 
 
 @pytest.mark.e2e
@@ -79,10 +81,14 @@ async def test_worker_analyze_complexity_range(e2e_env):
         complexity = result["complexity"]
 
         if "expected_complexity_max" in case:
-            assert complexity <= case["expected_complexity_max"], f"Complexity too high for: {case['body']}"
+            assert complexity <= case["expected_complexity_max"], (
+                f"Complexity too high for: {case['body']}"
+            )
 
         if "expected_complexity_min" in case:
-            assert complexity >= case["expected_complexity_min"], f"Complexity too low for: {case['body']}"
+            assert complexity >= case["expected_complexity_min"], (
+                f"Complexity too low for: {case['body']}"
+            )
 
 
 @pytest.mark.e2e

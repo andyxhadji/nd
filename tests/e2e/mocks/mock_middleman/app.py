@@ -1,7 +1,7 @@
 """Mock Middleman API for E2E testing."""
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import FastAPI, Query
