@@ -106,6 +106,32 @@ class KataClient:
             logger.warning("kata search returned non-JSON stdout: %r", stdout)
             return []
 
+    async def ensure_project(self, project: str) -> bool:
+        """Ensure a project exists, creating it if needed.
+
+        Returns True if project exists or was created, False on failure.
+        """
+        # Check if project already exists
+        projects = await self.list_projects()
+        if project in projects:
+            return True
+
+        # Initialize the project from a temp directory to avoid .kata.toml conflicts
+        returncode, stdout, stderr = await self._run(
+            ["init", "--project", project, "--workspace", "/tmp", "--json"]
+        )
+        if returncode == 0:
+            logger.info("Created kata project: %s", project)
+            return True
+
+        # Check if it already exists (race condition with another agent)
+        projects = await self.list_projects()
+        if project in projects:
+            return True
+
+        logger.warning("Failed to create kata project %s: %s", project, stderr)
+        return False
+
     async def create(
         self,
         title: str,
@@ -114,7 +140,15 @@ class KataClient:
         labels: list[str],
         idempotency_key: str,
     ) -> str | None:
-        """Create a new task. Returns task ID or None on failure."""
+        """Create a new task. Returns task ID or None on failure.
+
+        Automatically ensures the project exists before creating the task.
+        """
+        # Ensure project exists
+        if not await self.ensure_project(project):
+            logger.error("Cannot create task: project %s initialization failed", project)
+            return None
+
         args = [
             "create",
             title,
@@ -131,6 +165,7 @@ class KataClient:
 
         returncode, stdout, stderr = await self._run(args)
         if returncode != 0:
+            logger.warning("kata create failed (returncode=%d): %s", returncode, stderr)
             return None
         try:
             data = json.loads(stdout)

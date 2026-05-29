@@ -68,40 +68,55 @@ export async function parseApprovalContext(data: any): Promise<ApprovalContext |
   return baseContext;
 }
 
-async function parseSpecContext(_data: any): Promise<SpecReviewContext | undefined> {
-  // Would need to fetch the full trace from other executions
-  // For now, return undefined - we'll enhance this later
-  return undefined;
+async function parseSpecContext(data: any): Promise<SpecReviewContext | undefined> {
+  // Extract from the DAG - find analyze_task and plan_changes sibling executions
+  if (!data.dag) return undefined;
 
-  // Extract analysis result from analyze_task
-  // const analyzeCall = data.trace?.find((call: any) => call.name.endsWith('.analyze_task'));
-  // const analysis = analyzeCall?.output as any;
+  // Find the process_task execution (parent of waiting execution)
+  const processTask = findExecutionInDAG(data.dag, data.execution_id);
+  if (!processTask || !processTask.children) return undefined;
 
-  // Extract spec from plan_changes
-  // const planCall = data.trace?.find((call: any) => call.name.endsWith('.plan_changes'));
-  // const spec = planCall?.output as any;
+  // Find analyze_task execution
+  const analyzeExec = processTask.children.find((child: any) =>
+    child.reasoner_id === 'analyze_task' && child.status === 'succeeded'
+  );
 
-  // if (!analysis || !spec) {
-  //   return undefined;
-  // }
+  // Find plan_changes execution
+  const planExec = processTask.children.find((child: any) =>
+    child.reasoner_id === 'plan_changes' && child.status === 'succeeded'
+  );
 
-  // return {
-  //   confidence: (analysis.confidence as number) || 0,
-  //   complexity: (analysis.complexity as 1 | 2 | 3 | 4 | 5) || 3,
-  //   reasoning: (analysis.reasoning as string) || '',
-  //   suggestedApproach: (analysis.suggested_approach as string) || '',
-  //   filesLikelyAffected: (analysis.files_likely_affected as string[]) || [],
-  //   spec: {
-  //     summary: (spec.summary as string) || '',
-  //     problemStatement: (spec.problem_statement as string) || '',
-  //     proposedSolution: (spec.proposed_solution as string) || '',
-  //     filesToModify: (spec.files_to_modify as string[]) || [],
-  //     filesToCreate: (spec.files_to_create as string[]) || [],
-  //     testingApproach: (spec.testing_approach as string) || '',
-  //     risks: (spec.risks as string[]) || [],
-  //     questions: (spec.questions as string[]) || [],
-  //   },
-  // };
+  if (!analyzeExec || !planExec) return undefined;
+
+  try {
+    // Fetch execution details to get the result data
+    const analyzeDetails = await fetchExecutionDetails(analyzeExec.execution_id);
+    const planDetails = await fetchExecutionDetails(planExec.execution_id);
+
+    const analysis = analyzeDetails.output_data || {};
+    const spec = planDetails.output_data || {};
+
+    return {
+      confidence: (analysis.confidence as number) || 0,
+      complexity: (analysis.complexity as 1 | 2 | 3 | 4 | 5) || 3,
+      reasoning: (analysis.reasoning as string) || '',
+      suggestedApproach: (analysis.suggested_approach as string) || '',
+      filesLikelyAffected: (analysis.files_likely_affected as string[]) || [],
+      spec: {
+        summary: (spec.summary as string) || '',
+        problemStatement: (spec.problem_statement as string) || '',
+        proposedSolution: (spec.proposed_solution as string) || '',
+        filesToModify: (spec.files_to_modify as string[]) || [],
+        filesToCreate: (spec.files_to_create as string[]) || [],
+        testingApproach: (spec.testing_approach as string) || '',
+        risks: (spec.risks as string[]) || [],
+        questions: (spec.questions as string[]) || [],
+      },
+    };
+  } catch (error) {
+    console.error('Failed to fetch execution details for spec context:', error);
+    return undefined;
+  }
 }
 
 async function parseRoborevContext(_data: any): Promise<RoborevContext | undefined> {

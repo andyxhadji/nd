@@ -67,8 +67,11 @@ def create_triage_agent(
         AgentField auto-injects those names as kwargs (agent.py:2202-2205),
         which collides with the positional payload from cron triggers.
         """
-        # Get last poll timestamp from memory
-        last_poll_str = await app.memory.get("last_poll_timestamp")
+        # Get last poll timestamp from memory (if available)
+        last_poll_str = None
+        if app.memory is not None:
+            last_poll_str = await app.memory.get("last_poll_timestamp")
+
         if last_poll_str:
             last_poll = datetime.fromisoformat(last_poll_str)
         else:
@@ -142,11 +145,12 @@ def create_triage_agent(
                 if result.skipped_reason != "duplicate":
                     errors.append(f"Failed to create task: {result.skipped_reason}")
 
-        # Update last poll timestamp
-        await app.memory.set(
-            "last_poll_timestamp",
-            datetime.now(UTC).isoformat(),
-        )
+        # Update last poll timestamp (only if memory is available)
+        if app.memory is not None:
+            await app.memory.set(
+                "last_poll_timestamp",
+                datetime.now(UTC).isoformat(),
+            )
 
         return PollResult(
             comments_found=len(comments),

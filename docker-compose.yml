@@ -2,7 +2,7 @@ services:
   agentfield:
     image: agentfield/control-plane:latest
     ports:
-      - "8081:8080"
+      - "8082:8080"
     volumes:
       - agentfield-data:/data
     environment:
@@ -16,7 +16,7 @@ services:
       context: ./approval-dashboard
       dockerfile: Dockerfile
     ports:
-      - "3000:80"
+      - "3001:80"
     depends_on:
       - agentfield
     restart: unless-stopped
@@ -99,6 +99,7 @@ services:
       - KATA_SERVER=http://127.0.0.1:7878
       - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}
       - ROBOREV_MAX_ITERATIONS=${ROBOREV_MAX_ITERATIONS:-3}
+      - ROBOREV_CONTAINER_NAME=succulent-duck-roborev-1
     depends_on:
       # - agentfield
       - kata-daemon
@@ -135,6 +136,7 @@ services:
       - KATA_SERVER=http://127.0.0.1:7878
       - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-70}
       - ROBOREV_MAX_ITERATIONS=${ROBOREV_MAX_ITERATIONS:-3}
+      - ROBOREV_CONTAINER_NAME=succulent-duck-roborev-1
     depends_on:
       - agentfield
       - kata-daemon

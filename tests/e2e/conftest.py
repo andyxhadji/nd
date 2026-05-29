@@ -442,18 +442,24 @@ class KataTestClient:
         labels: list[str] | None = None,
     ) -> str:
         """Create a task and return its ID."""
-        cmd = ["kata", "new", title, "--project", project, "--body", body]
+        cmd = ["kata", "create", title, "--project", project, "--body", body, "--json", "--force-new"]
         if labels:
             for label in labels:
                 cmd.extend(["--label", label])
 
         rc, stdout, stderr = await self.env.exec("kata-daemon", cmd)
         if rc != 0:
-            raise RuntimeError(f"kata new failed: {stderr}")
+            raise RuntimeError(f"kata create failed: {stderr}")
 
-        # Parse task ID from output (format: "Created task: <project>#<id>")
-        task_ref = stdout.strip().split(":")[-1].strip()
-        return task_ref
+        # Parse JSON response
+        try:
+            result = json.loads(stdout)
+            # Return task reference in format "project#number"
+            project_name = result['event']['project_name']
+            issue_id = result['issue']['id']
+            return f"{project_name}#{issue_id}"
+        except (json.JSONDecodeError, KeyError) as e:
+            raise RuntimeError(f"Failed to parse kata create output: {e}\nOutput: {stdout}") from e
 
 
 @pytest.fixture
