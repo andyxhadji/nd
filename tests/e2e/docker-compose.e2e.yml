@@ -41,9 +41,12 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
-    command: python -m nd.triage
+    command: python tests/e2e/mocks/triage_with_mock.py
     network_mode: "service:kata-daemon"
+    volumes:
+      - ../../tests/e2e/mocks:/app/tests/e2e/mocks:ro
     environment:
+      - USE_MOCK_LLM=1
       - AGENTFIELD_URL=http://agentfield:8080
       - AGENT_PORT=8001
       - AGENT_CALLBACK_URL=http://kata-daemon:8001
@@ -66,12 +69,14 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
-    command: python -m nd.worker
+    command: python tests/e2e/mocks/worker_with_mock.py
     network_mode: "service:kata-daemon"
     volumes:
       - worker-workspace:/var/nd
       - /var/run/docker.sock:/var/run/docker.sock
+      - ../../tests/e2e/mocks:/app/tests/e2e/mocks:ro
     environment:
+      - USE_MOCK_LLM=1
       - AGENTFIELD_URL=http://agentfield:8080
       - AGENT_PORT=8002
       - AGENT_CALLBACK_URL=http://kata-daemon:8002
