@@ -251,14 +251,15 @@ class FakeWorkerWorkspace:
             branch=branch,
             base_branch=kwargs["base_branch"] or "main",
             bare_path="/tmp/nd-work/repos/gitlab.example.com/org/repo.git",
+            branch_hash="abc123",  # Mock 6-char hash
         )
 
     async def push(self, **kwargs):
         self.pushed.append(kwargs)
         return True
 
-    async def cleanup(self, repo_path: str, bare_path: str):
-        self.cleaned.append((repo_path, bare_path))
+    async def cleanup(self, repo_path: str, bare_path: str, branch: str | None = None):
+        self.cleaned.append((repo_path, bare_path, branch))
         return True
 
 
@@ -432,7 +433,7 @@ async def test_worker_processes_gitlab_issue_task_pushes_branch_and_creates_mr(m
     assert ("repo#0007", "responded") in fake_kata.labels
     assert fake_kata.closed == [("repo#0007", "done", "Addressed and responded")]
     assert fake_workspace.cleaned == [
-        ("/tmp/nd-work/repo-0007", "/tmp/nd-work/repos/gitlab.example.com/org/repo.git")
+        ("/tmp/nd-work/repo-0007", "/tmp/nd-work/repos/gitlab.example.com/org/repo.git", "nd/issue-0007")
     ]
 
 

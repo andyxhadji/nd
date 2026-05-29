@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import re
+import secrets
 import shutil
 import stat
 import tempfile
@@ -20,6 +21,7 @@ class Workspace:
     branch: str  # the checked-out branch
     base_branch: str  # what we forked from / the MR target
     bare_path: str  # absolute path to the shared bare cache
+    branch_hash: str  # 6-char random hash included in branch name for uniqueness
 
 
 # Validation pattern for path components used to build the bare cache path.
@@ -245,6 +247,10 @@ class WorkspaceClient:
             )
             base_branch = out.strip() if rc == 0 and out.strip() else "main"
 
+        # Generate a random 6-character hash to make branch names unique
+        # and avoid collisions when previous tasks weren't cleaned up
+        branch_hash = secrets.token_hex(3)  # 3 bytes = 6 hex chars
+
         if head_branch:
             rc, _, err = await self._run(
                 [
@@ -260,7 +266,12 @@ class WorkspaceClient:
             )
             branch = head_branch
         else:
-            new_branch = f"nd/issue-{issue_short_id}" if issue_short_id else f"nd/task-{task_slug}"
+            # Include random hash to prevent branch name collisions
+            new_branch = (
+                f"nd/issue-{issue_short_id}-{branch_hash}"
+                if issue_short_id
+                else f"nd/task-{task_slug}-{branch_hash}"
+            )
             rc, _, err = await self._run(
                 [
                     "git",
@@ -285,14 +296,27 @@ class WorkspaceClient:
             branch=branch,
             base_branch=base_branch,
             bare_path=bare_path,
+            branch_hash=branch_hash,
         )
 
-    async def cleanup(self, repo_path: str, bare_path: str) -> bool:
-        """Remove the worktree. Best-effort; never raises.
+    async def cleanup(
+        self,
+        repo_path: str,
+        bare_path: str,
+        branch: str | None = None,
+    ) -> bool:
+        """Remove the worktree and optionally delete the branch. Best-effort; never raises.
 
-        Returns ``True`` if ``git worktree remove`` succeeded. Returns
-        ``False`` when we had to fall back to ``shutil.rmtree`` (the
-        directory is gone but git's bookkeeping may still reference it).
+        Args:
+            repo_path: Path to the worktree to remove
+            bare_path: Path to the bare git repository
+            branch: Optional branch name to delete after removing worktree.
+                   Only deletes branches starting with "nd/" for safety.
+
+        Returns:
+            ``True`` if ``git worktree remove`` succeeded. Returns ``False``
+            when we had to fall back to ``shutil.rmtree`` (the directory is
+            gone but git's bookkeeping may still reference it).
         """
         rc, _, err = await self._run(
             [
@@ -311,8 +335,28 @@ class WorkspaceClient:
                 err.strip(),
             )
             shutil.rmtree(repo_path, ignore_errors=True)
-            return False
-        return True
+            # Prune stale worktree references
+            await self._run(
+                ["git", "-C", bare_path, "worktree", "prune"],
+            )
+
+        # Delete the branch if provided and it's an nd/ branch (safety check)
+        if branch and branch.startswith("nd/"):
+            logger.info("Deleting branch %s", branch)
+            rc_branch, _, err_branch = await self._run(
+                [
+                    "git",
+                    "-C",
+                    bare_path,
+                    "branch",
+                    "-D",  # Force delete even if not merged
+                    branch,
+                ],
+            )
+            if rc_branch != 0:
+                logger.warning("git branch -D %s failed: %s", branch, err_branch.strip())
+
+        return rc == 0
 
     async def push(self, *, platform: str, repo_path: str, branch: str) -> bool:
         """Push the prepared worktree branch back to origin."""
