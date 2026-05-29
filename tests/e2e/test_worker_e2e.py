@@ -5,6 +5,7 @@ import pytest
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="Requires E2EEnvironment agent registration (tracked separately)")
 async def test_analyze_simple_task(e2e_env):
     """Test analysis of a simple, low-complexity task."""
     result = await e2e_env.call(
@@ -24,6 +25,7 @@ async def test_analyze_simple_task(e2e_env):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="Requires E2EEnvironment agent registration (tracked separately)")
 async def test_analyze_complex_task(e2e_env):
     """Test analysis of a complex, high-complexity task."""
     result = await e2e_env.call(
@@ -43,6 +45,7 @@ async def test_analyze_complex_task(e2e_env):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="Requires E2EEnvironment agent registration (tracked separately)")
 async def test_analyze_question(e2e_env):
     """Test analysis of a question (not a request)."""
     result = await e2e_env.call(
@@ -62,6 +65,7 @@ async def test_analyze_question(e2e_env):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="Requires E2EEnvironment agent registration (tracked separately)")
 async def test_draft_response_simple(e2e_env):
     """Test response drafting for a simple change."""
     result = await e2e_env.call(
@@ -80,6 +84,7 @@ async def test_draft_response_simple(e2e_env):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="Requires E2EEnvironment agent registration (tracked separately)")
 async def test_claim_task_when_available(e2e_env, kata_client):
     """Test claiming a task when one is available."""
     # Create a task
@@ -102,6 +107,7 @@ async def test_claim_task_when_available(e2e_env, kata_client):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="Requires E2EEnvironment agent registration (tracked separately)")
 async def test_workspace_cleanup(e2e_env):
     """Test workspace cleanup reasoner."""
     # This is a unit-style test but runs against real agent
