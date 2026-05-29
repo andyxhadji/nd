@@ -77,7 +77,8 @@ async def e2e_env(compose_file, service_urls, e2e_timeout, use_running_agent):
     if not use_running_agent:
         # Start E2E compose
         proc = await asyncio.create_subprocess_exec(
-            "docker-compose",
+            "docker",
+            "compose",
             "-f",
             compose_file,
             "up",
@@ -101,7 +102,8 @@ async def e2e_env(compose_file, service_urls, e2e_timeout, use_running_agent):
     # Cleanup if we started compose
     if not use_running_agent:
         proc = await asyncio.create_subprocess_exec(
-            "docker-compose",
+            "docker",
+            "compose",
             "-f",
             compose_file,
             "down",
@@ -169,7 +171,8 @@ class E2EEnvironment:
     async def exec(self, service: str, cmd: list[str]) -> tuple[int, str, str]:
         """Execute a command in a docker-compose service."""
         proc = await asyncio.create_subprocess_exec(
-            "docker-compose",
+            "docker",
+            "compose",
             "-f",
             self.compose_file,
             "exec",
@@ -189,7 +192,8 @@ class E2EEnvironment:
     async def logs(self, service: str, tail: int = 50) -> str:
         """Get logs from a service."""
         proc = await asyncio.create_subprocess_exec(
-            "docker-compose",
+            "docker",
+            "compose",
             "-f",
             self.compose_file,
             "logs",
