@@ -107,8 +107,8 @@ services:
     volumes:
       - worker-workspace:/var/nd
     environment:
-      - ANTHROPIC_MODEL=${CLAUDE_CODE_MODEL:-arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
-      - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-1}
+      - ANTHROPIC_MODEL=${CLAUDE_CODE_MODEL:-openrouter/anthropic/claude-3.5-sonnet}
+      - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-0}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
     env_file:
       - ../../.env.local
