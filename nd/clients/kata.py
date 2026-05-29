@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import tempfile
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -116,10 +117,11 @@ class KataClient:
         if project in projects:
             return True
 
-        # Initialize the project from a temp directory to avoid .kata.toml conflicts
-        returncode, stdout, stderr = await self._run(
-            ["init", "--project", project, "--workspace", "/tmp", "--json"]
-        )
+        # Initialize the project from a unique temp directory to avoid .kata.toml conflicts
+        with tempfile.TemporaryDirectory() as tmpdir:
+            returncode, stdout, stderr = await self._run(
+                ["init", "--project", project, "--workspace", tmpdir, "--json"]
+            )
         if returncode == 0:
             logger.info("Created kata project: %s", project)
             return True

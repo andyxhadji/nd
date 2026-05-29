@@ -41,7 +41,7 @@ export default function App() {
     try {
       const result = await triggerAgent(nodeId, reasonerId);
       console.log(`Triggered ${key}:`, result);
-      alert(`Successfully triggered ${nodeId}.${reasonerId}\nExecution ID: ${result.execution_id}`);
+      alert(`Successfully triggered ${nodeId}.${reasonerId}${result.execution_id ? `\nExecution ID: ${result.execution_id}` : ''}`);
     } catch (error) {
       console.error(`Failed to trigger ${key}:`, error);
       alert(`Failed to trigger ${nodeId}.${reasonerId}: ${error instanceof Error ? error.message : String(error)}`);

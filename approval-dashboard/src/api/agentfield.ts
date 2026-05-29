@@ -200,6 +200,9 @@ export async function triggerAgent(
     }
 
     const result = await response.json();
+    if (!result.execution_id) {
+      throw new Error('Invalid response: missing execution_id');
+    }
     return result;
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {

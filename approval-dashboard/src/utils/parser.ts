@@ -90,8 +90,10 @@ async function parseSpecContext(data: any): Promise<SpecReviewContext | undefine
 
   try {
     // Fetch execution details to get the result data
-    const analyzeDetails = await fetchExecutionDetails(analyzeExec.execution_id);
-    const planDetails = await fetchExecutionDetails(planExec.execution_id);
+    const [analyzeDetails, planDetails] = await Promise.all([
+      fetchExecutionDetails(analyzeExec.execution_id),
+      fetchExecutionDetails(planExec.execution_id),
+    ]);
 
     const analysis = analyzeDetails.output_data || {};
     const spec = planDetails.output_data || {};
