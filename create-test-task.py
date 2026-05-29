@@ -5,8 +5,10 @@ Create a test task for the worker to claim and process.
 This creates a kata task that will trigger the full worker workflow including
 roborev integration.
 """
+
 import asyncio
 import sys
+
 from agentfield import Agent, AIConfig
 
 
@@ -48,11 +50,11 @@ async def main():
         print(f"\n   Result: {result}")
 
         if result.get("created"):
-            print(f"\n✅ Task created successfully!")
+            print("\n✅ Task created successfully!")
             print(f"   Task ID: {result.get('task_id')}")
             print(f"   Idempotency key: {result.get('idempotency_key')}")
-            print(f"\n2. Now trigger worker to claim this task:")
-            print(f"   python create-test-task.py --claim")
+            print("\n2. Now trigger worker to claim this task:")
+            print("   python create-test-task.py --claim")
             return 0
         else:
             print(f"\n⚠ Task not created: {result.get('error')}")
@@ -61,6 +63,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
@@ -113,6 +116,7 @@ async def claim_task():
     except Exception as e:
         print(f"\n❌ ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

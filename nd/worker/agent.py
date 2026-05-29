@@ -1,6 +1,7 @@
 """Worker agent definition with AgentField reasoners."""
 
 import asyncio
+import os
 import re
 
 import httpx

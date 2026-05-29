@@ -4,9 +4,10 @@ Simple test to verify worker reasoners don't crash.
 
 Tests by importing the worker module directly and calling reasoners.
 """
+
 import asyncio
-import sys
 import os
+import sys
 
 # Set environment variables needed for worker
 os.environ.setdefault("AGENTFIELD_URL", "http://agentfield:8080")
@@ -34,7 +35,7 @@ async def test_run_roborev():
             max_iterations=1,
         )
 
-        print(f"  ✓ Reasoner executed successfully")
+        print("  ✓ Reasoner executed successfully")
         print(f"  ✓ Result keys: {list(result.keys())}")
 
         passed = result.get("passed")
@@ -54,6 +55,7 @@ async def test_run_roborev():
     except Exception as e:
         print(f"  ✗ Reasoner failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -75,7 +77,7 @@ async def test_cleanup_workspace():
             branch="nd/test-branch-abc123",
         )
 
-        print(f"  ✓ Reasoner executed successfully")
+        print("  ✓ Reasoner executed successfully")
         print(f"  ✓ Result: {result}")
 
         return True
@@ -83,6 +85,7 @@ async def test_cleanup_workspace():
     except Exception as e:
         print(f"  ✗ Reasoner failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -109,7 +112,7 @@ async def test_prepare_workspace():
             issue_short_id="xyz789",
         )
 
-        print(f"  ✓ Reasoner executed successfully")
+        print("  ✓ Reasoner executed successfully")
         print(f"  ✓ Result keys: {list(result.keys())}")
         print(f"  ✓ Prepared: {result.get('prepared')}")
 
@@ -121,6 +124,7 @@ async def test_prepare_workspace():
     except Exception as e:
         print(f"  ✗ Reasoner failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -149,6 +153,7 @@ async def main():
         except Exception as e:
             print(f"\n❌ {test_name} test crashed: {e}")
             import traceback
+
             traceback.print_exc()
             results[test_name] = False
 
@@ -189,5 +194,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ Tests failed with exception: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

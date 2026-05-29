@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Test that roborev service has working claude agent integration."""
+
 import asyncio
 import sys
 

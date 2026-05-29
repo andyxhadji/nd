@@ -8,9 +8,12 @@ Tests the full flow:
 3. Task proceeds through workflow (workspace prep, analyze, execute)
 4. Approval appears in dashboard
 """
+
 import asyncio
 import sys
+
 from agentfield import Agent, AIConfig
+
 
 async def main():
     print("=" * 60)
@@ -22,17 +25,16 @@ async def main():
         node_id="smoke-test-trigger",
         version="1.0.0",
         agentfield_server="http://agentfield:8080",
-        ai_config=AIConfig(model="bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr"),
+        ai_config=AIConfig(
+            model="bedrock/converse/arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr"
+        ),
     )
 
     print("\n1. Triggering worker to claim and process task...")
     print("   Target: nd-worker.claim_task")
 
     try:
-        result = await trigger.call(
-            "nd-worker.claim_task",
-            payload=""
-        )
+        result = await trigger.call("nd-worker.claim_task", payload="")
         print(f"   Result: {result}")
 
         if result.get("claimed"):
@@ -57,8 +59,10 @@ async def main():
     except Exception as e:
         print(f"\n❌ ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
+
 
 if __name__ == "__main__":
     exit_code = asyncio.run(main())

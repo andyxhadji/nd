@@ -5,10 +5,9 @@ Test roborev agent behavior - verify it can actually review and fix code.
 This test creates a branch with intentional code quality issues, runs roborev
 review and refine, and verifies the agent can detect and fix the issues.
 """
+
 import asyncio
 import sys
-import tempfile
-from pathlib import Path
 
 
 async def run_command(cmd: list[str], cwd: str | None = None) -> tuple[int, str, str]:
@@ -30,7 +29,7 @@ async def test_roborev_review():
     print("=" * 70)
 
     # Create a test file with code quality issues in the existing worktree
-    test_file_content = '''
+    test_file_content = """
 def bad_function(x, y):
     # TODO: fix this
     a = x + y
@@ -45,17 +44,22 @@ def unused_function():
 # Missing docstrings
 # Poor variable names
 # Dead code
-'''
+"""
 
     print("\n1. Creating test file with code quality issues...")
     worktree_path = "/var/nd/work/langextract-bedrock-f4yn"
 
     # Write test file to container
-    rc, stdout, stderr = await run_command([
-        "docker", "exec", "hyper-furniture-roborev-1",
-        "bash", "-c",
-        f"cd {worktree_path} && cat > test_quality.py <<'EOF'{test_file_content}EOF"
-    ])
+    rc, stdout, stderr = await run_command(
+        [
+            "docker",
+            "exec",
+            "hyper-furniture-roborev-1",
+            "bash",
+            "-c",
+            f"cd {worktree_path} && cat > test_quality.py <<'EOF'{test_file_content}EOF",
+        ]
+    )
 
     if rc != 0:
         print(f"   ✗ Failed to create test file: {stderr}")
@@ -64,19 +68,36 @@ def unused_function():
 
     # Commit the file
     print("\n2. Committing test file...")
-    rc, stdout, stderr = await run_command([
-        "docker", "exec", "-w", worktree_path, "hyper-furniture-roborev-1",
-        "git", "add", "test_quality.py"
-    ])
+    rc, stdout, stderr = await run_command(
+        [
+            "docker",
+            "exec",
+            "-w",
+            worktree_path,
+            "hyper-furniture-roborev-1",
+            "git",
+            "add",
+            "test_quality.py",
+        ]
+    )
 
     if rc != 0:
         print(f"   ✗ Failed to add file: {stderr}")
         return False
 
-    rc, stdout, stderr = await run_command([
-        "docker", "exec", "-w", worktree_path, "hyper-furniture-roborev-1",
-        "git", "commit", "-m", "test: add file with code quality issues"
-    ])
+    rc, stdout, stderr = await run_command(
+        [
+            "docker",
+            "exec",
+            "-w",
+            worktree_path,
+            "hyper-furniture-roborev-1",
+            "git",
+            "commit",
+            "-m",
+            "test: add file with code quality issues",
+        ]
+    )
 
     if rc != 0:
         print(f"   ✗ Failed to commit: {stderr}")
@@ -89,10 +110,20 @@ def unused_function():
     print("\n3. Running roborev review on the commit...")
     print("   (This may take 30-60 seconds as claude reviews the code...)")
 
-    rc, stdout, stderr = await run_command([
-        "docker", "exec", "-w", worktree_path, "hyper-furniture-roborev-1",
-        "roborev", "review", "HEAD", "--local"
-    ], cwd=None)
+    rc, stdout, stderr = await run_command(
+        [
+            "docker",
+            "exec",
+            "-w",
+            worktree_path,
+            "hyper-furniture-roborev-1",
+            "roborev",
+            "review",
+            "HEAD",
+            "--local",
+        ],
+        cwd=None,
+    )
 
     print(f"\n   Review output (first 1000 chars):\n{stdout[:1000]}")
 
@@ -108,10 +139,19 @@ def unused_function():
 
     # Clean up test file
     print("\n4. Cleaning up test commit...")
-    rc, stdout, stderr = await run_command([
-        "docker", "exec", "-w", worktree_path, "hyper-furniture-roborev-1",
-        "git", "reset", "--hard", "HEAD~1"
-    ])
+    rc, stdout, stderr = await run_command(
+        [
+            "docker",
+            "exec",
+            "-w",
+            worktree_path,
+            "hyper-furniture-roborev-1",
+            "git",
+            "reset",
+            "--hard",
+            "HEAD~1",
+        ]
+    )
 
     if rc == 0:
         print("   ✓ Test commit removed")
@@ -130,10 +170,20 @@ async def test_roborev_refine():
     worktree_path = "/var/nd/work/langextract-bedrock-f4yn"
 
     print("\n1. Running roborev refine --list to check for reviews...")
-    rc, stdout, stderr = await run_command([
-        "docker", "exec", "-w", worktree_path, "hyper-furniture-roborev-1",
-        "roborev", "refine", "--list", "--max-iterations", "1"
-    ])
+    rc, stdout, stderr = await run_command(
+        [
+            "docker",
+            "exec",
+            "-w",
+            worktree_path,
+            "hyper-furniture-roborev-1",
+            "roborev",
+            "refine",
+            "--list",
+            "--max-iterations",
+            "1",
+        ]
+    )
 
     if rc == 0:
         print("   ✓ Roborev refine command executed successfully")
@@ -203,17 +253,16 @@ result = asyncio.run(simulate_worker_roborev())
 print(f"   - Worker integration successful: {result}")
 '''
 
-    rc, stdout, stderr = await run_command([
-        "docker", "exec", "hyper-furniture-worker-1-1",
-        "python3", "-c", test_code
-    ])
+    rc, stdout, stderr = await run_command(
+        ["docker", "exec", "hyper-furniture-worker-1-1", "python3", "-c", test_code]
+    )
 
     if rc == 0 and "Worker integration successful: True" in stdout:
         print("\n   ✓ Worker can successfully call roborev service")
         print("   ✓ Full docker exec → roborev → claude stack is operational")
         return True
     else:
-        print(f"\n   ✗ Worker integration failed")
+        print("\n   ✗ Worker integration failed")
         print(f"   Output: {stdout}")
         print(f"   Error: {stderr}")
         return False
@@ -235,6 +284,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ Review test failed with exception: {e}")
         import traceback
+
         traceback.print_exc()
         results["review"] = False
 
@@ -244,6 +294,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ Refine test failed with exception: {e}")
         import traceback
+
         traceback.print_exc()
         results["refine"] = False
 
@@ -253,6 +304,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ Worker test failed with exception: {e}")
         import traceback
+
         traceback.print_exc()
         results["worker"] = False
 
@@ -289,5 +341,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ Tests failed with exception: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Test that workspace preparation with random hashes prevents collisions."""
+
 import asyncio
+
 from nd.clients.workspace import WorkspaceClient
 
 
@@ -25,7 +27,7 @@ async def test_no_collision():
     )
 
     if ws1:
-        print(f"   ✓ First workspace created")
+        print("   ✓ First workspace created")
         print(f"     Branch: {ws1.branch}")
         print(f"     Hash: {ws1.branch_hash}")
         print(f"     Path: {ws1.repo_path}")
@@ -47,7 +49,7 @@ async def test_no_collision():
     )
 
     if ws2:
-        print(f"   ✓ Second workspace created")
+        print("   ✓ Second workspace created")
         print(f"     Branch: {ws2.branch}")
         print(f"     Hash: {ws2.branch_hash}")
         print(f"     Path: {ws2.repo_path}")
@@ -93,5 +95,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ Test failed with exception: {e}")
         import traceback
+
         traceback.print_exc()
         exit(1)

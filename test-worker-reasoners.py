@@ -5,10 +5,11 @@ Test worker reasoners to ensure they execute without failing.
 This tests the actual @app.reasoner() functions by calling them via
 the agentfield framework and verifying they return results.
 """
+
 import asyncio
 import sys
-from agentfield import Agent, AIConfig
 
+from agentfield import Agent, AIConfig
 
 # Create a test agent to call worker reasoners
 test_agent = Agent(
@@ -50,7 +51,7 @@ async def test_prepare_workspace():
             issue_short_id="abc123",
         )
 
-        print(f"  ✓ Reasoner executed successfully")
+        print("  ✓ Reasoner executed successfully")
         print(f"  ✓ Result keys: {list(result.keys())}")
 
         if result.get("prepared"):
@@ -66,6 +67,7 @@ async def test_prepare_workspace():
     except Exception as e:
         print(f"  ✗ Reasoner failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False, None
 
@@ -85,11 +87,11 @@ async def test_cleanup_workspace():
             branch="nd/issue-abc123-test123",
         )
 
-        print(f"  ✓ Reasoner executed successfully")
+        print("  ✓ Reasoner executed successfully")
         print(f"  ✓ Result: {result}")
 
         if result.get("cleaned"):
-            print(f"  ✓ Workspace cleaned successfully")
+            print("  ✓ Workspace cleaned successfully")
         else:
             print(f"  ⚠ Cleanup reported: {result}")
 
@@ -98,6 +100,7 @@ async def test_cleanup_workspace():
     except Exception as e:
         print(f"  ✗ Reasoner failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False, None
 
@@ -119,7 +122,7 @@ async def test_analyze_task():
             file_summaries=["math_utils.py: utility functions for mathematical operations"],
         )
 
-        print(f"  ✓ Reasoner executed successfully")
+        print("  ✓ Reasoner executed successfully")
         print(f"  ✓ Result keys: {list(result.keys())}")
 
         if "confidence" in result:
@@ -134,6 +137,7 @@ async def test_analyze_task():
     except Exception as e:
         print(f"  ✗ Reasoner failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False, None
 
@@ -155,7 +159,7 @@ async def test_run_roborev():
             max_iterations=1,
         )
 
-        print(f"  ✓ Reasoner executed successfully")
+        print("  ✓ Reasoner executed successfully")
         print(f"  ✓ Result keys: {list(result.keys())}")
 
         passed = result.get("passed")
@@ -175,6 +179,7 @@ async def test_run_roborev():
     except Exception as e:
         print(f"  ✗ Reasoner failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False, None
 
@@ -197,12 +202,12 @@ async def test_draft_response():
             commit_diff="+ def hello_world():\n+     return 'Hello, World!'",
         )
 
-        print(f"  ✓ Reasoner executed successfully")
+        print("  ✓ Reasoner executed successfully")
         print(f"  ✓ Result keys: {list(result.keys())}")
 
         if "response_text" in result:
             response_text = result["response_text"]
-            print(f"  ✓ Generated response (first 200 chars):")
+            print("  ✓ Generated response (first 200 chars):")
             print(f"    {response_text[:200]}")
             return True, result
         else:
@@ -212,6 +217,7 @@ async def test_draft_response():
     except Exception as e:
         print(f"  ✗ Reasoner failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False, None
 
@@ -242,6 +248,7 @@ async def main():
         except Exception as e:
             print(f"\n❌ {test_name} test crashed: {e}")
             import traceback
+
             traceback.print_exc()
             results[test_name] = False
 
@@ -284,5 +291,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ Tests failed with exception: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
