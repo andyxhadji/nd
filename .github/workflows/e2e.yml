@@ -44,11 +44,25 @@ jobs:
         run: |
           docker compose -f tests/e2e/docker-compose.e2e.yml build
 
+      - name: Start E2E environment
+        run: |
+          docker compose -f tests/e2e/docker-compose.e2e.yml up -d
+
+      - name: Wait for services
+        run: |
+          chmod +x tests/e2e/scripts/wait-for-services.sh
+          tests/e2e/scripts/wait-for-services.sh
+
       - name: Run E2E tests
         run: |
-          pytest tests/e2e/ -v --tb=short --e2e-timeout=300
+          pytest tests/e2e/ -v --tb=short --e2e-timeout=300 --use-running-agent
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose -f tests/e2e/docker-compose.e2e.yml down -v
 
       - name: Collect logs on failure
         if: failure()
