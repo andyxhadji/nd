@@ -626,17 +626,39 @@ Create a detailed spec.""",
         commit_sha: str,
         max_iterations: int = 3,
     ) -> dict:
-        """Run roborev-refine for code quality validation."""
+        """Run roborev-refine for code quality validation via docker exec."""
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "roborev",
-                "refine",
-                "--max-iterations",
-                str(max_iterations),
-                cwd=repo_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            # Check if we're in docker by looking for /.dockerenv
+            in_docker = os.path.exists("/.dockerenv")
+
+            if in_docker:
+                # Call roborev via docker exec to the roborev service
+                # The roborev container has the same workspace mounts
+                proc = await asyncio.create_subprocess_exec(
+                    "docker",
+                    "exec",
+                    "-w",
+                    repo_path,  # Set working directory in the target container
+                    "hyper-furniture-roborev-1",
+                    "roborev",
+                    "refine",
+                    "--max-iterations",
+                    str(max_iterations),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            else:
+                # Running locally, call roborev directly
+                proc = await asyncio.create_subprocess_exec(
+                    "roborev",
+                    "refine",
+                    "--max-iterations",
+                    str(max_iterations),
+                    cwd=repo_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+
             stdout, stderr = await proc.communicate()
 
             passed = proc.returncode == 0

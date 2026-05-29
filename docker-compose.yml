@@ -77,6 +77,7 @@ services:
       - ${ND_WORKSPACE_ROOT:-./.nd-workspace}:/var/nd
       - ${HOME}/.claude:/root/.claude
       - ${HOME}/.claude.json:/root/.claude.json
+      - /var/run/docker.sock:/var/run/docker.sock
     network_mode: "service:kata-daemon"
     environment:
       - AGENTFIELD_URL=http://agentfield:8080
@@ -112,6 +113,7 @@ services:
       - ${ND_WORKSPACE_ROOT:-./.nd-workspace}:/var/nd
       - ${HOME}/.claude:/root/.claude
       - ${HOME}/.claude.json:/root/.claude.json
+      - /var/run/docker.sock:/var/run/docker.sock
     network_mode: "service:kata-daemon"
     environment:
       - AGENTFIELD_URL=http://agentfield:8080
@@ -136,6 +138,24 @@ services:
     depends_on:
       - agentfield
       - kata-daemon
+    restart: unless-stopped
+
+  roborev:
+    build: .
+    entrypoint: []
+    command: ["tail", "-f", "/dev/null"]
+    volumes:
+      - ${ND_WORKSPACE_ROOT:-./.nd-workspace}:/var/nd
+      - ${HOME}/.claude:/root/.claude
+      - ${HOME}/.claude.json:/root/.claude.json
+    environment:
+      - ANTHROPIC_MODEL=${CLAUDE_CODE_MODEL:-arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - ANTHROPIC_SMALL_FAST_MODEL=${CLAUDE_CODE_SMALL_FAST_MODEL:-arn:aws:bedrock:us-east-1:657062785455:application-inference-profile/mj2ayeqbysnr}
+      - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-1}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+    env_file:
+      - .env.local
     restart: unless-stopped
 
 volumes:

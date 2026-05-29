@@ -138,7 +138,10 @@ hyper-furniture-worker-1-1       Up        -
 hyper-furniture-worker-2-1       Up        -
 hyper-furniture-triage-1         Up        -
 hyper-furniture-dashboard-1      Up        3000→80
+hyper-furniture-roborev-1        Up        -
 ```
+
+**Note**: The roborev service was added to allow workers to run code reviews in an isolated container with access to the same workspace directories.
 
 ## All Commits
 
