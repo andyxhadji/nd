@@ -99,6 +99,9 @@ async def e2e_env(compose_file, service_urls, e2e_timeout, use_running_agent):
 
     yield env
 
+    # Cleanup agent
+    await env.cleanup_agent()
+
     # Cleanup if we started compose
     if not use_running_agent:
         proc = await asyncio.create_subprocess_exec(
@@ -154,26 +157,67 @@ class E2EEnvironment:
         self.service_urls = service_urls
         self.compose_file = compose_file
         self._agent: Agent | None = None
+        self._agent_task: asyncio.Task | None = None
+
+    async def _start_agent(self) -> Agent:
+        """Start the test controller agent and register with AgentField."""
+        # Default to OpenRouter for portability across AWS accounts
+        default_model = "openrouter/google/gemini-2.0-flash-exp:free"
+        model = os.getenv("WORKER_MODEL", default_model)
+
+        agent = Agent(
+            node_id="e2e-test-controller",
+            version="1.0.0",
+            agentfield_server=self.service_urls["agentfield"],
+            ai_config=AIConfig(model=model),
+        )
+
+        # Run agent server in background using executor to avoid blocking
+        import concurrent.futures
+
+        loop = asyncio.get_event_loop()
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+        def run_agent_blocking():
+            # Use auto_port to avoid port conflicts
+            agent.run(auto_port=True)
+
+        # Start agent in thread and store the future
+        self._agent_task = loop.run_in_executor(executor, run_agent_blocking)
+
+        # Wait for agent to start and register with AgentField
+        await asyncio.sleep(3)
+
+        return agent
 
     @property
     def agent(self) -> Agent:
-        """Get or create agent for making cross-agent calls."""
+        """Get the test controller agent."""
         if self._agent is None:
-            # Default to OpenRouter for portability across AWS accounts
-            default_model = "openrouter/google/gemini-2.0-flash-exp:free"
-            model = os.getenv("WORKER_MODEL", default_model)
-
-            self._agent = Agent(
-                node_id="e2e-test-controller",
-                version="1.0.0",
-                agentfield_server=self.service_urls["agentfield"],
-                ai_config=AIConfig(model=model),
-            )
+            raise RuntimeError("Agent not started. Use 'await env.ensure_agent_started()' first.")
         return self._agent
+
+    async def ensure_agent_started(self):
+        """Ensure the test controller agent is started and registered."""
+        if self._agent is None:
+            self._agent = await self._start_agent()
 
     async def call(self, reasoner: str, **kwargs) -> dict[str, Any]:
         """Call a reasoner in one of the running agents."""
+        await self.ensure_agent_started()
         return await self.agent.call(reasoner, **kwargs)
+
+    async def cleanup_agent(self):
+        """Stop the test controller agent."""
+        if self._agent_task:
+            import concurrent.futures
+
+            # Cancel the future running in executor
+            self._agent_task.cancel()
+            try:
+                await self._agent_task
+            except (asyncio.CancelledError, concurrent.futures.CancelledError):
+                pass
 
     async def exec(self, service: str, cmd: list[str]) -> tuple[int, str, str]:
         """Execute a command in a docker-compose service."""
