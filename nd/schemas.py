@@ -244,6 +244,16 @@ class ApprovalRequest(BaseModel):
     changes_summary: list[str] = Field(default_factory=list)
 
 
+class SourceMetadata(BaseModel):
+    """Source tracking metadata for approval requests."""
+
+    source_url: str = Field(description="Full URL to MR or issue")
+    source_type: Literal["mr", "issue"] = Field(description="Type of source")
+    source_identifier: str = Field(
+        description="Format: platform:owner/repo#number (e.g., gitlab:flatiron/myproject#123)"
+    )
+
+
 class PostInput(BaseModel):
     """Input for posting response to MR."""
 
