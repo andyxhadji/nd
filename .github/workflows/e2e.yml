@@ -32,16 +32,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Create .env.local for E2E tests
-        run: |
-          cat > .env.local <<EOF
-          OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
-          ND_CURRENT_USER=test-user
-          ND_ASSIGNED_USERNAMES=test-user,reviewer
-          GITHUB_TOKEN=mock-github-token
-          GITLAB_TOKEN=mock-gitlab-token
-          EOF
-
       - name: Start E2E docker-compose environment
         run: |
           docker compose -f tests/e2e/docker-compose.e2e.yml up -d
