@@ -214,6 +214,8 @@ class DraftInput(BaseModel):
     comment_body: str
     changes_made: list[str]
     commit_sha: str
+    roborev_passed: bool = True
+    roborev_findings: list[str] | None = None
 
 
 class DraftResult(BaseModel):

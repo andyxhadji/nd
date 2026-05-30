@@ -655,6 +655,8 @@ async def test_draft_response_includes_roborev_findings(monkeypatch):
     user_prompt = llm_call["user"]
     assert "Roborev found 3 issue(s)" in user_prompt
     assert "Missing error handling" in user_prompt
+    assert "Unused variable 'temp'" in user_prompt
+    assert "Consider adding docstring" in user_prompt
 
     # Verify the response includes commit reference
     assert "abc123" in response
