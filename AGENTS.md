@@ -125,6 +125,60 @@ If you need to add new environment variables:
 
 ## Troubleshooting Common Issues
 
+### Working in Git Worktrees
+
+**This repository is often used with git worktrees.** Docker containers must be started from the worktree directory you're currently working in.
+
+**Common Issue:** `/var/nd/work` directory not found
+
+**Symptoms:**
+- Agent execution fails with `[Errno 2] No such file or directory: '/var/nd/work'`
+- WorkspaceClient.prepare() fails
+
+**Root cause:** Docker containers were started from a different worktree. The volume mount in docker-compose.yml uses:
+```yaml
+volumes:
+  - ${ND_WORKSPACE_ROOT:-./.nd-workspace}:/var/nd
+```
+
+The `./.nd-workspace` path is relative to where `docker-compose up` was run, NOT the current directory.
+
+**How to identify:**
+```bash
+# Check where containers are running from
+docker inspect <container-name>-worker-1-1 --format '{{.Config.Labels}}' | grep working_dir
+
+# Check volume mounts
+docker inspect <container-name>-worker-1-1 --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}'
+```
+
+**Solution:**
+```bash
+# 1. Stop containers from old worktree
+docker-compose -p <old-project-name> down
+
+# 2. Create workspace directory in current worktree
+mkdir -p .nd-workspace/work
+
+# 3. Start containers from current worktree
+docker-compose up -d
+```
+
+**Alternative: Shared workspace across worktrees**
+
+Set `ND_WORKSPACE_ROOT` to an absolute path in `.env.local`:
+```bash
+ND_WORKSPACE_ROOT=/Users/andy/.nd-workspace-shared
+```
+
+Then create the directory and restart:
+```bash
+mkdir -p /Users/andy/.nd-workspace-shared/work
+docker-compose down && docker-compose up -d
+```
+
+This allows all worktrees to share the same workspace, making tasks visible across worktrees.
+
 ### AgentField Connectivity
 If agents show "running in degraded mode" or "Could not resolve host: agentfield":
 - Check for port conflicts on 8081
