@@ -57,8 +57,6 @@ services:
       - ND_CURRENT_USER=${ND_CURRENT_USER:-test-user}
       - ND_ASSIGNED_USERNAMES=${ND_ASSIGNED_USERNAMES:-test-user,reviewer}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
-    env_file:
-      - ../../.env.local
     depends_on:
       - agentfield
       - kata-daemon
@@ -94,8 +92,6 @@ services:
       - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-1}
       - ANTHROPIC_MODEL=${CLAUDE_CODE_MODEL:-openrouter/anthropic/claude-3.5-sonnet}
       - ANTHROPIC_SMALL_FAST_MODEL=${CLAUDE_CODE_SMALL_FAST_MODEL:-openrouter/google/gemini-2.0-flash-exp:free}
-    env_file:
-      - ../../.env.local
     depends_on:
       - agentfield
       - kata-daemon
@@ -116,8 +112,6 @@ services:
       - ANTHROPIC_MODEL=${CLAUDE_CODE_MODEL:-openrouter/anthropic/claude-3.5-sonnet}
       - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-0}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
-    env_file:
-      - ../../.env.local
     restart: unless-stopped
 
   # Mock Middleman API

@@ -11,15 +11,12 @@ env:
   # Use fast, cheap models for E2E tests
   TRIAGE_MODEL: openrouter/google/gemini-2.0-flash-exp:free
   WORKER_MODEL: openrouter/google/gemini-2.0-flash-exp:free
-  # Skip agent integration tests in CI (require full docker-compose setup)
-  SKIP_AGENT_INTEGRATION: "true"
-  SKIP_DOCKER_TESTS: "true"
 
 jobs:
   e2e:
     name: End-to-End Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # Reduced from 30
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
@@ -35,13 +32,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Create .env.local for E2E tests
+      - name: Start E2E docker-compose environment
         run: |
-          cat > .env.local <<EOF
-          OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
-          ND_CURRENT_USER=test-user
-          ND_ASSIGNED_USERNAMES=test-user,reviewer
-          EOF
+          docker compose -f tests/e2e/docker-compose.e2e.yml up -d
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+      - name: Wait for services to be healthy
+        run: |
+          bash tests/e2e/scripts/wait-for-services.sh
+        timeout-minutes: 5
 
       - name: Run E2E tests
         run: |
@@ -53,7 +53,7 @@ jobs:
         if: failure()
         run: |
           echo "Collecting docker compose logs..."
-          docker compose -f tests/e2e/docker-compose.e2e.yml logs --tail=500 > e2e-logs.txt
+          docker compose -f tests/e2e/docker-compose.e2e.yml logs --tail=500 > e2e-logs.txt || echo "Failed to collect logs"
 
       - name: Upload logs
         if: failure()
@@ -62,6 +62,12 @@ jobs:
           name: e2e-logs
           path: e2e-logs.txt
           retention-days: 7
+          if-no-files-found: warn
+
+      - name: Cleanup docker-compose
+        if: always()
+        run: |
+          docker compose -f tests/e2e/docker-compose.e2e.yml down -v || echo "Failed to cleanup compose"
 
   e2e-summary:
     name: E2E Test Summary

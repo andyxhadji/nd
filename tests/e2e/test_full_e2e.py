@@ -1,17 +1,13 @@
 """Full end-to-end tests covering the complete agent workflow."""
 
 import asyncio
-import os
 
 import pytest
 
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    os.getenv("SKIP_AGENT_INTEGRATION") == "true",
-    reason="Agent integration disabled - requires docker-compose with agent registration",
-)
+@pytest.mark.skip_ci  # Skip in CI - requires agent registration which is complex to set up
 async def test_simple_request_flow(
     e2e_env,
     mock_middleman,
@@ -81,10 +77,7 @@ async def test_simple_request_flow(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    os.getenv("SKIP_AGENT_INTEGRATION") == "true",
-    reason="Agent integration disabled - requires docker-compose with agent registration",
-)
+@pytest.mark.skip_ci  # Skip in CI - requires agent registration which is complex to set up
 async def test_duplicate_comment_handling(
     e2e_env,
     mock_middleman,
