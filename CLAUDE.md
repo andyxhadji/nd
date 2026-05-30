@@ -146,7 +146,7 @@ python -m nd.triage    # entry: nd/triage/__main__.py
 python -m nd.worker    # entry: nd/worker/__main__.py
 ```
 
-Cron schedules on `poll_comments` and `claim_task` are intentionally commented out — invoke entrypoints manually (or via the agentfield control plane) for now.
+Cron schedules on `poll_comments` and `claim_task` are intentionally commented out. The triage agent automatically triggers the worker's `claim_task` reasoner via `app.call()` whenever a new task is created, eliminating the need for worker polling.
 
 ## Configuration (env vars)
 
