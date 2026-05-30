@@ -496,15 +496,17 @@ async def test_worker_fails_issue_task_when_merge_request_creation_fails(monkeyp
                 success=True,
                 files_changed=["parser.py"],
                 commit_sha="abc1234",
+                diff="diff --git a/parser.py...",
             ).model_dump()
         if reasoner == "run_roborev":
             return RoborevResult(passed=True, iterations=1).model_dump()
         if reasoner == "draft_response":
             draft_calls.append(kwargs)
-            return DraftResult(response_text="Should not draft.", confident=True).model_dump()
+            return DraftResult(response_text="Fixed the parser.", confident=True).model_dump()
         return await dispatch_reasoner(app, name, **kwargs)
 
     monkeypatch.setattr(app, "call", fake_call)
+    monkeypatch.setattr(app, "pause", approved_pause)
 
     result = await app._reasoner_registry["process_task"].func(
         task_id="repo#0007",
@@ -516,8 +518,12 @@ async def test_worker_fails_issue_task_when_merge_request_creation_fails(monkeyp
 
     assert result == {
         "status": "failed",
-        "changes_made": [],
-        "response_draft": None,
+        "changes_made": ["parser.py"],
+        "response_draft": "Fixed the parser.",
+        "commit_sha": "abc1234",
+        "diff": "diff --git a/parser.py...",
+        "roborev_passed": True,
+        "roborev_findings": [],
         "error": "merge request creation failed",
     }
     assert ("repo#0007", "failed") in fake_kata.labels
@@ -525,7 +531,8 @@ async def test_worker_fails_issue_task_when_merge_request_creation_fails(monkeyp
         {"platform": "gitlab", "repo_path": "/tmp/nd-work/repo-0007", "branch": "nd/issue-0007"}
     ]
     assert fake_platform.merge_requests
-    assert draft_calls == []
+    # draft_response is now called before publish, so it should be called once
+    assert len(draft_calls) == 1
 
 
 @pytest.mark.asyncio
@@ -563,6 +570,7 @@ async def test_worker_processes_gitlab_mr_task_pushes_branch_and_posts_response(
                 success=True,
                 files_changed=["tests/test_parser.py"],
                 commit_sha="def5678",
+                diff="diff --git a/tests/test_parser.py...",
             ).model_dump()
         if reasoner == "run_roborev":
             return RoborevResult(passed=True, iterations=1).model_dump()
@@ -584,6 +592,10 @@ async def test_worker_processes_gitlab_mr_task_pushes_branch_and_posts_response(
     )
 
     assert result["status"] == "completed"
+    assert result["commit_sha"] == "def5678"
+    assert result["diff"] == "diff --git a/tests/test_parser.py..."
+    assert result["roborev_passed"] is True
+    assert result["roborev_findings"] == []
     assert fake_workspace.prepared[0]["head_branch"] == "feature/parser"
     assert fake_workspace.pushed == [
         {"platform": "gitlab", "repo_path": "/tmp/nd-work/repo-0007", "branch": "feature/parser"}
@@ -601,6 +613,55 @@ async def test_worker_processes_gitlab_mr_task_pushes_branch_and_posts_response(
         }
     ]
     assert fake_kata.comments[-1] == ("repo#0042", "Response posted. Commit: def5678")
+
+
+@pytest.mark.asyncio
+async def test_draft_response_includes_roborev_findings(monkeypatch):
+    """Test that draft_response includes roborev findings when provided."""
+    app, *_ = _make_worker_agent(monkeypatch)
+
+    # Mock the LLM call to verify roborev findings are passed to the prompt
+    llm_calls = []
+
+    async def mock_ai(**kwargs):
+        llm_calls.append(kwargs)
+        # Return mock response matching expected structure
+        return {"message": "Fixed the parser bug in abc123", "confident": False}
+
+    monkeypatch.setattr(app, "ai", mock_ai)
+
+    result = await app._reasoner_registry["draft_response"].func(
+        comment_body="Fix the parser bug",
+        changes_made=["parser.py", "tests/test_parser.py"],
+        commit_sha="abc123",
+        roborev_passed=False,
+        roborev_findings=[
+            "Missing error handling in parse_input()",
+            "Unused variable 'temp' in line 42",
+            "Consider adding docstring to helper function",
+        ],
+    )
+
+    # Verify result structure
+    assert "response_text" in result
+    assert "confident" in result
+    response = result["response_text"]
+
+    # Verify the LLM was called
+    assert len(llm_calls) == 1
+    llm_call = llm_calls[0]
+
+    # Verify roborev findings were included in the prompt
+    user_prompt = llm_call["user"]
+    assert "Roborev found 3 issue(s)" in user_prompt
+    assert "Missing error handling" in user_prompt
+    assert "Unused variable 'temp'" in user_prompt
+    assert "Consider adding docstring" in user_prompt
+
+    # Verify the response includes commit reference
+    assert "abc123" in response
+    assert isinstance(response, str)
+    assert len(response) > 0
 
 
 @pytest.mark.asyncio
