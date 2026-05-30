@@ -1,6 +1,6 @@
 """Test that triage agent triggers worker claim_task after creating tasks."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
