@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { FileCode, AlertCircle, Copy, Check, ChevronDown, ChevronRight } from 'lucide-react';
+import { FileCode, AlertCircle, Copy, Check } from 'lucide-react';
 import { RoborevContext } from '../api/types';
+import { DiffViewer } from './DiffViewer';
 
 interface RoborevCardProps {
   context: RoborevContext;
@@ -8,7 +9,6 @@ interface RoborevCardProps {
 
 export function RoborevCard({ context }: RoborevCardProps) {
   const [copied, setCopied] = useState(false);
-  const [showComment, setShowComment] = useState(false);
 
   const copyCommitSha = () => {
     navigator.clipboard.writeText(context.commitSha);
@@ -18,23 +18,20 @@ export function RoborevCard({ context }: RoborevCardProps) {
 
   return (
     <div className="space-y-4">
-      {/* Original Comment */}
-      {context.originalComment && (
-        <div>
-          <button
-            onClick={() => setShowComment(!showComment)}
-            className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900"
-          >
-            {showComment ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            Original Comment
-          </button>
-          {showComment && (
-            <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-md text-sm">
-              <p className="whitespace-pre-wrap text-gray-700">{context.originalComment}</p>
-            </div>
-          )}
+      {/* Review Status */}
+      <div className="p-3 bg-orange-50 border border-orange-200 rounded-md">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="w-5 h-5 text-orange-600" />
+          <div>
+            <p className="text-sm font-medium text-orange-900">
+              Roborev failed after {context.iterations} iteration(s)
+            </p>
+            <p className="text-xs text-orange-700 mt-1">
+              Review the changes and findings below to decide whether to approve or reject.
+            </p>
+          </div>
         </div>
-      )}
+      </div>
 
       {/* Files Changed */}
       <div>
@@ -71,6 +68,9 @@ export function RoborevCard({ context }: RoborevCardProps) {
           </button>
         </div>
       </div>
+
+      {/* Git Diff */}
+      {context.diff && <DiffViewer diff={context.diff} />}
 
       {/* Roborev Findings */}
       <div>

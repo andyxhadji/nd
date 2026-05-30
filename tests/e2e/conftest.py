@@ -213,10 +213,11 @@ class E2EEnvironment:
             import concurrent.futures
 
             # Cancel the future running in executor
-            self._agent_task.cancel()
             try:
+                self._agent_task.cancel()
                 await self._agent_task
-            except (asyncio.CancelledError, concurrent.futures.CancelledError):
+            except (asyncio.CancelledError, concurrent.futures.CancelledError, RuntimeError):
+                # RuntimeError: Event loop is closed - can happen during teardown
                 pass
 
     async def exec(self, service: str, cmd: list[str]) -> tuple[int, str, str]:
@@ -384,6 +385,20 @@ class KataTestClient:
     def __init__(self, env: E2EEnvironment):
         self.env = env
 
+    async def ensure_project_initialized(self, project: str) -> None:
+        """Ensure a kata project is initialized."""
+        # Check if project exists
+        cmd = ["kata", "list", "--project", project, "--json"]
+        rc, stdout, stderr = await self.env.exec("kata-daemon", cmd)
+
+        # If project not initialized, create it
+        if rc != 0 and ("project_not_initialized" in stderr or "no .kata.toml" in stderr):
+            init_cmd = ["kata", "init", project]
+
+            rc, stdout, stderr = await self.env.exec("kata-daemon", init_cmd)
+            if rc != 0:
+                raise RuntimeError(f"kata init failed: {stderr}")
+
     async def list_tasks(self, project: str | None = None) -> list[dict]:
         """List tasks in kata."""
         cmd = ["kata", "list", "--json"]
@@ -392,6 +407,10 @@ class KataTestClient:
 
         rc, stdout, stderr = await self.env.exec("kata-daemon", cmd)
         if rc != 0:
+            # Check if it's a project not initialized error
+            if "project_not_initialized" in stderr or "no .kata.toml ancestor" in stderr:
+                # Return empty list for uninitialized projects
+                return []
             raise RuntimeError(f"kata list failed: {stderr}")
 
         if not stdout.strip():
@@ -422,18 +441,35 @@ class KataTestClient:
         labels: list[str] | None = None,
     ) -> str:
         """Create a task and return its ID."""
-        cmd = ["kata", "new", title, "--project", project, "--body", body]
+        cmd = [
+            "kata",
+            "create",
+            title,
+            "--project",
+            project,
+            "--body",
+            body,
+            "--json",
+            "--force-new",
+        ]
         if labels:
             for label in labels:
                 cmd.extend(["--label", label])
 
         rc, stdout, stderr = await self.env.exec("kata-daemon", cmd)
         if rc != 0:
-            raise RuntimeError(f"kata new failed: {stderr}")
+            raise RuntimeError(f"kata create failed: {stderr}")
 
-        # Parse task ID from output (format: "Created task: <project>#<id>")
-        task_ref = stdout.strip().split(":")[-1].strip()
-        return task_ref
+        # Parse JSON response
+        try:
+            result = json.loads(stdout)
+            # Return task reference in format "project#number"
+            # Response format: {"kata_api_version": 1, "issue": {"short_id": ..., "project_name": ..., ...}}
+            project_name = result["issue"]["project_name"]
+            issue_id = result["issue"]["short_id"]
+            return f"{project_name}#{issue_id}"
+        except (json.JSONDecodeError, KeyError) as e:
+            raise RuntimeError(f"Failed to parse kata create output: {e}\nOutput: {stdout}") from e
 
 
 @pytest.fixture

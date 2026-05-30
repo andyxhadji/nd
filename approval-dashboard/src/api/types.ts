@@ -80,11 +80,12 @@ export interface SpecReviewContext {
 }
 
 export interface RoborevContext {
-  filesChanged: string[];
-  commitSha: string;
+  passed: boolean;
   iterations: number;
   findings: string[];
-  originalComment: string;
+  filesChanged: string[];
+  commitSha: string;
+  diff?: string;
 }
 
 export interface ResponseContext {

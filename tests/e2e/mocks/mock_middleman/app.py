@@ -44,12 +44,14 @@ class Issue(BaseModel):
     body: str
     url: str
     author: str
+    state: str = "open"  # open, closed
     assignees: list[str]
     platform: str
     platform_host: str
     repo_owner: str
     repo_name: str
     created_at: str | None = None
+    updated_at: str | None = None
 
 
 @app.get("/health")
@@ -108,6 +110,28 @@ async def get_issues_assigned_to(username: str):
     results = [issue for issue in _issues if username in issue.get("assignees", [])]
 
     logger.info(f"Returning {len(results)} issues for {username}")
+    return results
+
+
+@app.get("/api/v1/issues")
+async def get_issues(
+    state: str | None = Query(None),
+    assignee: str | None = Query(None),
+):
+    """Get issues with optional filtering (matches real middleman API)."""
+    logger.info(f"GET /api/v1/issues state={state} assignee={assignee}")
+
+    results = _issues.copy()
+
+    # Filter by state
+    if state:
+        results = [issue for issue in results if issue.get("state") == state]
+
+    # Filter by assignee
+    if assignee:
+        results = [issue for issue in results if assignee in issue.get("assignees", [])]
+
+    logger.info(f"Returning {len(results)} issues")
     return results
 
 

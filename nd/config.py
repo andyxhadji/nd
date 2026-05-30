@@ -25,6 +25,7 @@ class Config:
     github_token: str
     gitlab_token: str
     current_user: str
+    current_users: list[str]
     assigned_usernames: list[str]
     agent_port: int
     workspace_root: str
@@ -53,6 +54,9 @@ class Config:
             github_token=os.getenv("GITHUB_TOKEN", ""),
             gitlab_token=os.getenv("GITLAB_TOKEN", ""),
             current_user=os.getenv("ND_CURRENT_USER", ""),
+            current_users=_parse_usernames(
+                os.getenv("ND_CURRENT_USERS", "") or os.getenv("ND_CURRENT_USER", "")
+            ),
             assigned_usernames=_parse_usernames(os.getenv("ND_ASSIGNED_USERNAMES", "")),
             agent_port=int(os.getenv("AGENT_PORT", "0")),
             workspace_root=os.getenv("WORKSPACE_ROOT", "/var/nd"),

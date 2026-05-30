@@ -187,6 +187,7 @@ class ExecutionResult(BaseModel):
     success: bool
     files_changed: list[str] = Field(default_factory=list)
     commit_sha: str | None = None
+    diff: str | None = None
     error: str | None = None
 
 

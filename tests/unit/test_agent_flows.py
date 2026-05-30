@@ -36,12 +36,21 @@ async def dispatch_reasoner(app, name: str, **kwargs):
 @dataclass
 class FakeTriageMiddleman:
     comments: list[MRComment] = field(default_factory=list)
+    mr_authors: dict[int, str] = field(default_factory=dict)  # mr_number -> author
     issues_by_user: dict[str, list[Issue]] = field(default_factory=dict)
     comment_queries: list[dict] = field(default_factory=list)
     issue_queries: list[str] = field(default_factory=list)
 
-    async def get_comments_since(self, *, since: datetime, current_user: str):
-        self.comment_queries.append({"since": since, "current_user": current_user})
+    async def get_comments_since(self, *, since: datetime, current_users: list[str] | None = None):
+        self.comment_queries.append({"since": since, "current_users": current_users})
+        # Filter comments by MR author if current_users is specified
+        if current_users:
+            filtered = []
+            for comment in self.comments:
+                mr_author = self.mr_authors.get(comment.mr_number)
+                if mr_author and mr_author in current_users:
+                    filtered.append(comment)
+            return filtered
         return self.comments
 
     async def get_issues_assigned_to(self, username: str):
@@ -106,6 +115,7 @@ def _triage_config(**overrides):
         "middleman_url": "http://middleman",
         "kata_server": "",
         "current_user": "alice",
+        "current_users": ["alice"],
         "assigned_usernames": ["alice", "bob"],
     }
     values.update(overrides)
@@ -154,7 +164,11 @@ def _make_gitlab_issue(number: int = 7) -> Issue:
 async def test_triage_polls_gitlab_comments_and_creates_kata_task(monkeypatch):
     import nd.triage.agent as triage_agent
 
-    fake_middleman = FakeTriageMiddleman(comments=[_make_gitlab_comment()])
+    comment = _make_gitlab_comment()
+    fake_middleman = FakeTriageMiddleman(
+        comments=[comment],
+        mr_authors={comment.mr_number: "alice"},  # MR 42 is authored by alice
+    )
     fake_kata = FakeTriageKata()
 
     monkeypatch.setattr(triage_agent, "config", _triage_config())
@@ -171,7 +185,7 @@ async def test_triage_polls_gitlab_comments_and_creates_kata_task(monkeypatch):
     assert result["comments_found"] == 1
     assert result["tasks_created"] == 1
     assert result["errors"] == []
-    assert fake_middleman.comment_queries[0]["current_user"] == "alice"
+    assert fake_middleman.comment_queries[0]["current_users"] == ["alice"]
     assert fake_kata.created[0]["project"] == "repo"
     assert fake_kata.created[0]["labels"] == ["from-mr", "nd"]
     assert fake_kata.created[0]["idempotency_key"] == _make_gitlab_comment().dedupe_key
@@ -620,6 +634,7 @@ async def test_execute_changes_fails_when_harness_makes_no_changes(monkeypatch, 
         "success": False,
         "files_changed": [],
         "commit_sha": None,
+        "diff": None,
         "error": "harness completed without producing changes",
     }
 

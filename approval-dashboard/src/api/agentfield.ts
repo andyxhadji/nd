@@ -166,3 +166,50 @@ export async function sendApproval(
     clearTimeout(timeoutId);
   }
 }
+
+/**
+ * Trigger an agent reasoner via AgentField REST API.
+ * Uses the /api/v1/execute/async endpoint to start reasoner execution.
+ */
+export async function triggerAgent(
+  nodeId: string,
+  reasonerId: string
+): Promise<any> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout for agent calls
+
+  try {
+    const target = `${nodeId}.${reasonerId}`;
+    const response = await fetch(
+      `${AGENTFIELD_URL}/api/v1/execute/async/${target}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          payload: null,
+        }),
+        signal: controller.signal,
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const result = await response.json();
+    if (!result.execution_id) {
+      throw new Error('Invalid response: missing execution_id');
+    }
+    return result;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timeout');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
