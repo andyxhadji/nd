@@ -58,7 +58,7 @@ class TestMultiUserCommentPolling:
             ]
         }
 
-        with patch.object(client, '_get_client', return_value=AsyncMock()) as mock_get_client:
+        with patch.object(client, "_get_client", return_value=AsyncMock()) as mock_get_client:
             mock_http_client = mock_get_client.return_value
             mock_http_client.get = AsyncMock(return_value=mock_response)
 
@@ -134,7 +134,7 @@ class TestMultiUserCommentPolling:
             ]
         }
 
-        with patch.object(client, '_get_client', return_value=AsyncMock()) as mock_get_client:
+        with patch.object(client, "_get_client", return_value=AsyncMock()) as mock_get_client:
             mock_http_client = mock_get_client.return_value
             mock_http_client.get = AsyncMock(return_value=mock_response)
 
@@ -192,7 +192,7 @@ class TestMultiUserCommentPolling:
             ]
         }
 
-        with patch.object(client, '_get_client', return_value=AsyncMock()) as mock_get_client:
+        with patch.object(client, "_get_client", return_value=AsyncMock()) as mock_get_client:
             mock_http_client = mock_get_client.return_value
             mock_http_client.get = AsyncMock(return_value=mock_response)
 
@@ -213,34 +213,44 @@ class TestMultiUserCommentPolling:
 
     def test_config_parses_multiple_current_users(self):
         """Test that Config correctly parses ND_CURRENT_USERS."""
-        with patch.dict('os.environ', {
-            'AGENTFIELD_URL': 'http://test',
-            'MIDDLEMAN_URL': 'http://test',
-            'KATA_SERVER': 'http://test',
-            'ND_CURRENT_USERS': 'andy,andyxhadji,other',
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "AGENTFIELD_URL": "http://test",
+                "MIDDLEMAN_URL": "http://test",
+                "KATA_SERVER": "http://test",
+                "ND_CURRENT_USERS": "andy,andyxhadji,other",
+            },
+        ):
             config = Config.from_env()
-            assert config.current_users == ['andy', 'andyxhadji', 'other']
+            assert config.current_users == ["andy", "andyxhadji", "other"]
 
     def test_config_falls_back_to_current_user(self):
         """Test that ND_CURRENT_USERS falls back to ND_CURRENT_USER."""
-        with patch.dict('os.environ', {
-            'AGENTFIELD_URL': 'http://test',
-            'MIDDLEMAN_URL': 'http://test',
-            'KATA_SERVER': 'http://test',
-            'ND_CURRENT_USER': 'andy',
-        }, clear=True):
+        with patch.dict(
+            "os.environ",
+            {
+                "AGENTFIELD_URL": "http://test",
+                "MIDDLEMAN_URL": "http://test",
+                "KATA_SERVER": "http://test",
+                "ND_CURRENT_USER": "andy",
+            },
+            clear=True,
+        ):
             config = Config.from_env()
-            assert config.current_users == ['andy']
-            assert config.current_user == 'andy'
+            assert config.current_users == ["andy"]
+            assert config.current_user == "andy"
 
     def test_config_handles_whitespace_in_users(self):
         """Test that Config strips whitespace from usernames."""
-        with patch.dict('os.environ', {
-            'AGENTFIELD_URL': 'http://test',
-            'MIDDLEMAN_URL': 'http://test',
-            'KATA_SERVER': 'http://test',
-            'ND_CURRENT_USERS': ' andy , andyxhadji , other ',
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "AGENTFIELD_URL": "http://test",
+                "MIDDLEMAN_URL": "http://test",
+                "KATA_SERVER": "http://test",
+                "ND_CURRENT_USERS": " andy , andyxhadji , other ",
+            },
+        ):
             config = Config.from_env()
-            assert config.current_users == ['andy', 'andyxhadji', 'other']
+            assert config.current_users == ["andy", "andyxhadji", "other"]

@@ -90,7 +90,9 @@ async def test_issue_to_github_complete_flow(
 
     # Verify task is now in-progress
     claimed_task = await kata_client.show_task(claimed_task_id)
-    assert "in-progress" in claimed_task.get("labels", []) or "claimed" in claimed_task.get("labels", [])
+    assert "in-progress" in claimed_task.get("labels", []) or "claimed" in claimed_task.get(
+        "labels", []
+    )
 
     # Step 3: Poll for worker to complete processing
     # Worker processes asynchronously through multiple reasoners:
@@ -111,7 +113,9 @@ async def test_issue_to_github_complete_flow(
 
         # Check task status
         task_status = await kata_client.show_task(claimed_task_id)
-        if "closed" in task_status.get("labels", []) or "completed" in task_status.get("labels", []):
+        if "closed" in task_status.get("labels", []) or "completed" in task_status.get(
+            "labels", []
+        ):
             # Task completed - worker should have posted response
             break
 
@@ -237,7 +241,9 @@ async def test_issue_to_gitlab_complete_flow(
             break
 
         task_status = await kata_client.show_task(claimed_task_id)
-        if "closed" in task_status.get("labels", []) or "completed" in task_status.get("labels", []):
+        if "closed" in task_status.get("labels", []) or "completed" in task_status.get(
+            "labels", []
+        ):
             break
 
         await asyncio.sleep(poll_interval)

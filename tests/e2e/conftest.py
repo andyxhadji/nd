@@ -441,7 +441,17 @@ class KataTestClient:
         labels: list[str] | None = None,
     ) -> str:
         """Create a task and return its ID."""
-        cmd = ["kata", "create", title, "--project", project, "--body", body, "--json", "--force-new"]
+        cmd = [
+            "kata",
+            "create",
+            title,
+            "--project",
+            project,
+            "--body",
+            body,
+            "--json",
+            "--force-new",
+        ]
         if labels:
             for label in labels:
                 cmd.extend(["--label", label])
@@ -455,8 +465,8 @@ class KataTestClient:
             result = json.loads(stdout)
             # Return task reference in format "project#number"
             # Response format: {"kata_api_version": 1, "issue": {"short_id": ..., "project_name": ..., ...}}
-            project_name = result['issue']['project_name']
-            issue_id = result['issue']['short_id']
+            project_name = result["issue"]["project_name"]
+            issue_id = result["issue"]["short_id"]
             return f"{project_name}#{issue_id}"
         except (json.JSONDecodeError, KeyError) as e:
             raise RuntimeError(f"Failed to parse kata create output: {e}\nOutput: {stdout}") from e

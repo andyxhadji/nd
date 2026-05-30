@@ -167,7 +167,7 @@ async def test_triage_polls_gitlab_comments_and_creates_kata_task(monkeypatch):
     comment = _make_gitlab_comment()
     fake_middleman = FakeTriageMiddleman(
         comments=[comment],
-        mr_authors={comment.mr_number: "alice"}  # MR 42 is authored by alice
+        mr_authors={comment.mr_number: "alice"},  # MR 42 is authored by alice
     )
     fake_kata = FakeTriageKata()
 
