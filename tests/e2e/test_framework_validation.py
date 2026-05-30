@@ -6,6 +6,7 @@ They test fixtures, helpers, and mock service logic.
 """
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -210,6 +211,7 @@ def test_scenario_loader_function(scenario_loader):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+@pytest.mark.skipif(os.getenv("SKIP_DOCKER_TESTS") == "true", reason="Docker compose not available")
 async def test_mock_services_reachable(service_urls):
     """Test that all mock services are reachable via HTTP."""
     import httpx
@@ -230,6 +232,7 @@ async def test_mock_services_reachable(service_urls):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+@pytest.mark.skipif(os.getenv("SKIP_DOCKER_TESTS") == "true", reason="Docker compose not available")
 async def test_mock_middleman_basic_operations(mock_middleman):
     """Test mock middleman basic seed/query without agents."""
     # Reset

@@ -23,18 +23,21 @@ def test_total_e2e_test_count():
 
 
 def test_no_skipped_agent_integration_tests_in_ci():
-    """Ensure we're not collecting skipped agent integration tests in CI."""
+    """Ensure agent integration tests are properly skipped when env flag is set."""
     import os
 
     if os.getenv("SKIP_AGENT_INTEGRATION") != "true":
         # Not running in CI mode, skip this check
         return
 
+    # Run pytest with -v to see skip status
     result = subprocess.run(
-        ["pytest", "tests/e2e", "--collect-only", "-q"],
+        ["pytest", "tests/e2e/test_full_e2e.py", "-v", "--tb=no"],
         capture_output=True,
         text=True,
     )
 
-    # Should not collect tests marked with agent integration skip
-    assert "test_simple_request_flow" not in result.stdout or "[SKIPPED]" in result.stdout
+    # Should see SKIPPED marker for agent integration tests
+    assert "test_simple_request_flow" in result.stdout
+    assert "SKIPPED" in result.stdout
+    assert "Agent integration" in result.stdout or "docker-compose" in result.stdout
