@@ -50,4 +50,6 @@ def test_no_skipped_agent_integration_tests_in_ci():
         if "test_simple_request_flow" in line and "SKIPPED" in line:
             found_skipped = True
             break
-    assert found_skipped, "test_simple_request_flow should be SKIPPED when SKIP_AGENT_INTEGRATION=true"
+    assert found_skipped, (
+        "test_simple_request_flow should be SKIPPED when SKIP_AGENT_INTEGRATION=true"
+    )

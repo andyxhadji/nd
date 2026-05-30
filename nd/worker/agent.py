@@ -55,7 +55,9 @@ def _extract_source_metadata(
     else:
         # Fallback: construct from available data
         if mr_number:
-            source_url = f"https://{platform_host}/{repo_owner}/{repo_name}/-/merge_requests/{mr_number}"
+            source_url = (
+                f"https://{platform_host}/{repo_owner}/{repo_name}/-/merge_requests/{mr_number}"
+            )
             source_type = "mr"
             source_identifier = f"{platform}:{repo_owner}/{repo_name}#{mr_number}"
         elif issue_number:
@@ -421,7 +423,7 @@ def create_worker_agent(
             repo_name=context.get("repo_name", project),
             base_branch=ws.base_branch or context.get("base_branch", "main"),
             title=context.get("mr_title", title),
-            source_url=context.get("mr_url", ""),
+            source_url=context.get("issue_url") or context.get("mr_url", ""),
             is_issue=is_issue,
         )
         publish = PublishResult(**publish_result)
@@ -950,8 +952,8 @@ def _parse_task_body(body: str) -> dict | None:
         context["category"] = "issue"
         context["repo_owner"] = issue_match.group(1)
         context["repo_name"] = issue_match.group(2)
-        context["mr_number"] = int(issue_match.group(3))
-        context["mr_url"] = issue_match.group(4)
+        context["issue_number"] = int(issue_match.group(3))
+        context["issue_url"] = issue_match.group(4)
 
         title_match = re.search(r"\*\*Title:\*\* (.+)", body)
         if title_match:
