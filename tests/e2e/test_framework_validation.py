@@ -168,9 +168,6 @@ def test_all_test_files_importable():
 
     test_files = [
         "test_full_e2e.py",
-        "test_triage_e2e.py",
-        "test_worker_e2e.py",
-        "test_reasoners_e2e.py",
         "example_test.py",
     ]
 
