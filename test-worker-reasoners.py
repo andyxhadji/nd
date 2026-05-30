@@ -199,7 +199,6 @@ async def test_draft_response():
             comment_body="Add a hello world function",
             changes_made=["Added hello_world() function to utils.py"],
             commit_sha="abc123def456",
-            commit_diff="+ def hello_world():\n+     return 'Hello, World!'",
         )
 
         print("  ✓ Reasoner executed successfully")
