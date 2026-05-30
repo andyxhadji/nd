@@ -1,11 +1,13 @@
 """
 Validation tests for the E2E framework itself.
 
-These tests verify the framework structure without requiring docker-compose.
-They test fixtures, helpers, and mock service logic.
+These tests verify the framework structure, fixtures, helpers, and infrastructure.
+Most tests run without docker-compose (fast validation), while infrastructure
+validation tests require docker-compose to verify service reachability.
 """
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -168,9 +170,6 @@ def test_all_test_files_importable():
 
     test_files = [
         "test_full_e2e.py",
-        "test_triage_e2e.py",
-        "test_worker_e2e.py",
-        "test_reasoners_e2e.py",
         "example_test.py",
     ]
 
@@ -209,3 +208,59 @@ def test_scenario_loader_function(scenario_loader):
     assert scenario["name"] == "Simple request flow"
     assert "initial_state" in scenario
     assert "expected_flow" in scenario
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.getenv("SKIP_DOCKER_TESTS") == "true", reason="Docker compose not available")
+async def test_mock_services_reachable(service_urls):
+    """Test that all mock services are reachable via HTTP."""
+    import httpx
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        # Test mock middleman
+        resp = await client.get(f"{service_urls['middleman']}/health")
+        assert resp.status_code == 200, f"Mock middleman not healthy: {resp.status_code}"
+
+        # Test mock GitHub
+        resp = await client.get(f"{service_urls['github']}/health")
+        assert resp.status_code == 200, f"Mock GitHub not healthy: {resp.status_code}"
+
+        # Test mock GitLab
+        resp = await client.get(f"{service_urls['gitlab']}/health")
+        assert resp.status_code == 200, f"Mock GitLab not healthy: {resp.status_code}"
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.getenv("SKIP_DOCKER_TESTS") == "true", reason="Docker compose not available")
+async def test_mock_middleman_basic_operations(mock_middleman):
+    """Test mock middleman basic seed/query without agents."""
+    # Reset
+    await mock_middleman.reset()
+
+    # Seed a simple issue
+    test_issue = {
+        "id": "test-1",
+        "number": 1,
+        "title": "Test issue",
+        "body": "Test body",
+        "state": "open",
+        "author": "tester",
+        "assignees": ["test-user"],
+        "url": "https://github.com/test/repo/issues/1",
+        "created_at": "2026-05-29T10:00:00Z",
+        "updated_at": "2026-05-29T10:00:00Z",
+        "platform": "github",
+        "platform_host": "github.com",
+        "repo_owner": "test",
+        "repo_name": "repo",
+    }
+
+    await mock_middleman.seed_issues([test_issue])
+
+    # Query it back
+    issues = await mock_middleman.get_issues_assigned_to("test-user")
+    assert len(issues) == 1
+    assert issues[0]["number"] == 1
+    assert issues[0]["title"] == "Test issue"

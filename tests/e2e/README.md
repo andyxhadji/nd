@@ -2,6 +2,36 @@
 
 This directory contains true end-to-end tests for the nd agent system that run against mock services in docker-compose.
 
+## Test Suite Overview
+
+**Total Tests:** ~30
+- **Mock LLM Tests** (17): Fast, no docker - test mock service logic
+- **Framework Validation** (13): Fast, no docker - validate test infrastructure
+- **Flow Tests** (2): Require docker-compose - test end-to-end workflows
+
+**Removed in Simplification (2026-05-29):**
+- Individual reasoner tests → moved to `tests/unit/test_reasoner_integration.py`
+- Duplicate flow tests → consolidated into `test_full_e2e.py`
+- Agent registration tests → causing CI hangs, functionality tested via example tests
+
+## Running Tests
+
+**Fast tests only (no docker):**
+```bash
+pytest tests/e2e -v -m "not skip_ci" --ignore=tests/e2e/test_full_e2e.py
+```
+
+**All tests (requires docker-compose):**
+```bash
+docker-compose -f tests/e2e/docker-compose.e2e.yml up -d
+pytest tests/e2e -v
+```
+
+**CI configuration:**
+- Skips agent integration tests (`SKIP_AGENT_INTEGRATION=true`)
+- 10 minute timeout
+- Runs framework validation + mock LLM tests only
+
 ## Architecture
 
 ```

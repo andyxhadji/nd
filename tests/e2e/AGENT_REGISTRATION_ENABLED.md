@@ -17,7 +17,7 @@ Agent registration for E2E tests has been successfully enabled and validated. Th
 - This eliminates the teardown error while maintaining proper cleanup
 
 ### 3. Created Validation Tests
-- **`test_infrastructure_validation.py`** - Validates mock services and basic infrastructure
+- **`test_framework_validation.py`** - Validates test framework, infrastructure, and mock services
   - `test_mock_services_reachable` ✅ PASSING
   - `test_mock_middleman_basic_operations` ✅ PASSING
   - `test_kata_client_basic_operations` - Skipped (kata command interface needs investigation)
@@ -76,8 +76,8 @@ docker-compose -f tests/e2e/docker-compose.e2e.yml up -d
 # Wait for services to be healthy (15-20 seconds)
 sleep 20
 
-# Run infrastructure validation
-pytest tests/e2e/test_infrastructure_validation.py -v -k "not kata"
+# Run framework and infrastructure validation
+pytest tests/e2e/test_framework_validation.py -v -k "not kata"
 
 # Run agent registration test
 pytest tests/e2e/test_agent_registration.py::test_e2e_environment_agent_startup -v
