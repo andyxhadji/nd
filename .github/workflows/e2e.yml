@@ -11,12 +11,15 @@ env:
   # Use fast, cheap models for E2E tests
   TRIAGE_MODEL: openrouter/google/gemini-2.0-flash-exp:free
   WORKER_MODEL: openrouter/google/gemini-2.0-flash-exp:free
+  # Skip agent integration tests in CI (require full docker-compose setup)
+  SKIP_AGENT_INTEGRATION: "true"
+  SKIP_DOCKER_TESTS: "true"
 
 jobs:
   e2e:
     name: End-to-End Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10  # Reduced from 30
 
     steps:
       - name: Checkout code
@@ -42,7 +45,7 @@ jobs:
 
       - name: Run E2E tests
         run: |
-          pytest tests/e2e/ -v --tb=short --e2e-timeout=600
+          pytest tests/e2e/ -v --tb=short -m "not skip_ci"
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
