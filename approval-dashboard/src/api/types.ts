@@ -59,6 +59,31 @@ export interface ApprovalContext {
   spec?: SpecReviewContext;
   roborev?: RoborevContext;
   response?: ResponseContext;
+  // Source tracking for grouping
+  sourceUrl: string;
+  sourceType: 'mr' | 'issue';
+  sourceIdentifier: string;
+}
+
+export interface GroupedApproval {
+  sourceUrl: string;
+  sourceType: 'mr' | 'issue';
+  sourceIdentifier: string;
+  sourceTitle: string;
+  approvals: ApprovalContext[];
+  approvalCounts: {
+    spec: number;
+    roborev: number;
+    post: number;
+  };
+  latestTimestamp: Date;
+}
+
+export interface DiffTab {
+  label: string;
+  diff: string;
+  executionId: string;
+  reasoner: string;
 }
 
 export interface SpecReviewContext {

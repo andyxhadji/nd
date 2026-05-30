@@ -9,6 +9,7 @@ from nd.schemas import (
     CommentInput,
     IssuePollResult,
     IssueTaskInput,
+    SourceMetadata,
 )
 
 
@@ -101,3 +102,33 @@ class TestIssuePollResult:
         assert result.tasks_created == 3
         assert result.skipped == 2
         assert len(result.errors) == 1
+
+
+class TestSourceMetadata:
+    def test_valid_mr_source(self):
+        source = SourceMetadata(
+            source_url="https://gitlab.com/flatiron/myproject/-/merge_requests/123",
+            source_type="mr",
+            source_identifier="gitlab:flatiron/myproject#123",
+        )
+        assert source.source_url == "https://gitlab.com/flatiron/myproject/-/merge_requests/123"
+        assert source.source_type == "mr"
+        assert source.source_identifier == "gitlab:flatiron/myproject#123"
+
+    def test_valid_issue_source(self):
+        source = SourceMetadata(
+            source_url="https://github.com/owner/repo/issues/456",
+            source_type="issue",
+            source_identifier="github:owner/repo#456",
+        )
+        assert source.source_url == "https://github.com/owner/repo/issues/456"
+        assert source.source_type == "issue"
+        assert source.source_identifier == "github:owner/repo#456"
+
+    def test_source_type_validation(self):
+        with pytest.raises(ValueError):
+            SourceMetadata(
+                source_url="https://example.com",
+                source_type="invalid_type",
+                source_identifier="test",
+            )

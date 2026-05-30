@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Clock, Play } from 'lucide-react';
 import { useApprovals } from './hooks/useApprovals';
+import { useGroupedApprovals } from './hooks/useGroupedApprovals';
 import { ConnectionStatus } from './components/ConnectionStatus';
 import { ApprovalCard } from './components/ApprovalCard';
+import { GroupedApprovalList } from './components/GroupedApprovalList';
 import { fetchRunDetails, triggerAgent } from './api/agentfield';
 
-type TabType = 'spec' | 'roborev' | 'post' | 'control';
+type TabType = 'source' | 'spec' | 'roborev' | 'post' | 'control';
 
 export default function App() {
   const { data: approvals, isLoading, isError, dataUpdatedAt } = useApprovals();
-  const [activeTab, setActiveTab] = useState<TabType>('control');
+  const { data: groupedApprovals } = useGroupedApprovals();
+  const [activeTab, setActiveTab] = useState<TabType>('source');
   const [traces, setTraces] = useState<Record<string, any[]>>({});
   const [triggering, setTriggering] = useState<Record<string, boolean>>({});
 
@@ -71,6 +74,13 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="flex gap-8">
             <TabButton
+              active={activeTab === 'source'}
+              count={groupedApprovals?.length || 0}
+              onClick={() => setActiveTab('source')}
+            >
+              By Source
+            </TabButton>
+            <TabButton
               active={activeTab === 'control'}
               count={0}
               onClick={() => setActiveTab('control')}
@@ -111,6 +121,10 @@ export default function App() {
               Make sure AgentField is running at http://localhost:8081
             </p>
           </div>
+        )}
+
+        {activeTab === 'source' && (
+          <GroupedApprovalList groups={groupedApprovals || []} />
         )}
 
         {activeTab === 'control' && (
@@ -159,14 +173,14 @@ export default function App() {
           </div>
         )}
 
-        {activeTab !== 'control' && isLoading && !approvals && (
+        {activeTab !== 'control' && activeTab !== 'source' && isLoading && !approvals && (
           <div className="flex items-center justify-center py-12">
             <Clock className="w-6 h-6 text-gray-400 animate-spin" />
             <span className="ml-2 text-gray-600">Loading approvals...</span>
           </div>
         )}
 
-        {activeTab !== 'control' && !isLoading && !isError && filteredApprovals.length === 0 && (
+        {activeTab !== 'control' && activeTab !== 'source' && !isLoading && !isError && filteredApprovals.length === 0 && (
           <div className="text-center py-12">
             <p className="text-gray-600 text-lg">No pending {activeTab} approvals</p>
             <p className="text-gray-500 text-sm mt-2">
@@ -175,7 +189,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab !== 'control' && filteredApprovals.length > 0 && (
+        {activeTab !== 'control' && activeTab !== 'source' && filteredApprovals.length > 0 && (
           <div className="space-y-6">
             {filteredApprovals.map((approval) => (
               <ApprovalCard

@@ -27,6 +27,50 @@ from nd.schemas import (
 from nd.worker.analyzer import TaskAnalyzer
 
 
+def _extract_source_metadata(
+    platform: str,
+    platform_host: str,
+    repo_owner: str,
+    repo_name: str,
+    mr_number: int | None = None,
+    mr_url: str | None = None,
+    issue_number: int | None = None,
+    issue_url: str | None = None,
+) -> tuple[str, str, str]:
+    """Extract source URL, type, and identifier from task metadata.
+
+    Returns:
+        (source_url, source_type, source_identifier)
+    """
+    if mr_number and mr_url:
+        # MR comment task
+        source_url = mr_url
+        source_type = "mr"
+        source_identifier = f"{platform}:{repo_owner}/{repo_name}#{mr_number}"
+    elif issue_number and issue_url:
+        # Issue task
+        source_url = issue_url
+        source_type = "issue"
+        source_identifier = f"{platform}:{repo_owner}/{repo_name}#{issue_number}"
+    else:
+        # Fallback: construct from available data
+        if mr_number:
+            source_url = f"https://{platform_host}/{repo_owner}/{repo_name}/-/merge_requests/{mr_number}"
+            source_type = "mr"
+            source_identifier = f"{platform}:{repo_owner}/{repo_name}#{mr_number}"
+        elif issue_number:
+            source_url = f"https://{platform_host}/{repo_owner}/{repo_name}/-/issues/{issue_number}"
+            source_type = "issue"
+            source_identifier = f"{platform}:{repo_owner}/{repo_name}#{issue_number}"
+        else:
+            # No source info available
+            source_url = "unknown"
+            source_type = "mr"
+            source_identifier = "unknown:unknown#0"
+
+    return source_url, source_type, source_identifier
+
+
 def create_worker_agent(
     node_id: str = "nd-worker",
     ai_config: AIConfig | None = None,
@@ -224,6 +268,18 @@ def create_worker_agent(
             ).model_dump()
         repo_path = ws.repo_path
 
+        # Extract source metadata for grouping
+        source_url, source_type, source_identifier = _extract_source_metadata(
+            platform=context.get("platform", ""),
+            platform_host=context.get("platform_host", ""),
+            repo_owner=context.get("repo_owner", ""),
+            repo_name=context.get("repo_name", project),
+            mr_number=context.get("mr_number"),
+            mr_url=context.get("mr_url"),
+            issue_number=context.get("issue_number"),
+            issue_url=context.get("issue_url"),
+        )
+
         async def _maybe_cleanup_on_failure() -> None:
             """Tear down the worktree on failure/pause when configured.
 
@@ -274,6 +330,10 @@ def create_worker_agent(
                 approval_request_url=context.get("mr_url", ""),
                 expires_in_hours=72,
                 timeout=259200,
+                # Source metadata for grouping
+                source_url=source_url,
+                source_type=source_type,
+                source_identifier=source_identifier,
             )
 
             if not approval.approved:
@@ -330,6 +390,10 @@ def create_worker_agent(
             approval_request_url=context.get("mr_url", ""),
             expires_in_hours=72,
             timeout=259200,
+            # Source metadata for grouping
+            source_url=source_url,
+            source_type=source_type,
+            source_identifier=source_identifier,
         )
 
         if not approval.approved:
