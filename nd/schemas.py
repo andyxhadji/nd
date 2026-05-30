@@ -214,7 +214,6 @@ class DraftInput(BaseModel):
     comment_body: str
     changes_made: list[str]
     commit_sha: str
-    commit_diff: str
 
 
 class DraftResult(BaseModel):

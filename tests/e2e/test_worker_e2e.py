@@ -73,7 +73,6 @@ async def test_draft_response_simple(e2e_env):
         comment_body="Add error handling",
         changes_made=["src/main.py", "tests/test_main.py"],
         commit_sha="abc123def456",
-        commit_diff="",
     )
 
     assert "response_text" in result

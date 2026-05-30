@@ -105,7 +105,6 @@ async def test_worker_draft_response_includes_commit(e2e_env):
         comment_body="Add logging",
         changes_made=["app.py"],
         commit_sha=commit_sha,
-        commit_diff="",
     )
 
     response_text = result["response_text"]
