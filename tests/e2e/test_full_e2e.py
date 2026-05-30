@@ -8,6 +8,7 @@ import pytest
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+@pytest.mark.skip_ci  # Skip in CI - requires agent registration which is complex to set up
 @pytest.mark.skipif(
     os.getenv("SKIP_AGENT_INTEGRATION") == "true",
     reason="Agent integration disabled - requires docker-compose with agent registration",
@@ -81,6 +82,7 @@ async def test_simple_request_flow(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+@pytest.mark.skip_ci  # Skip in CI - requires agent registration which is complex to set up
 @pytest.mark.skipif(
     os.getenv("SKIP_AGENT_INTEGRATION") == "true",
     reason="Agent integration disabled - requires docker-compose with agent registration",
