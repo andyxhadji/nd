@@ -15,7 +15,13 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
     for SERVICE in "${SERVICES[@]}"; do
         NAME="${SERVICE%%:*}"
         PORT="${SERVICE##*:}"
-        URL="http://localhost:${PORT}/health"
+
+        # AgentField doesn't have /health, check root instead
+        if [ "$NAME" = "agentfield" ]; then
+            URL="http://localhost:${PORT}/"
+        else
+            URL="http://localhost:${PORT}/health"
+        fi
 
         if ! curl -sf "$URL" > /dev/null 2>&1; then
             ALL_HEALTHY=false
@@ -39,7 +45,13 @@ echo "Service status:"
 for SERVICE in "${SERVICES[@]}"; do
     NAME="${SERVICE%%:*}"
     PORT="${SERVICE##*:}"
-    URL="http://localhost:${PORT}/health"
+
+    # AgentField doesn't have /health, check root instead
+    if [ "$NAME" = "agentfield" ]; then
+        URL="http://localhost:${PORT}/"
+    else
+        URL="http://localhost:${PORT}/health"
+    fi
 
     if curl -sf "$URL" > /dev/null 2>&1; then
         echo "  ✅ ${NAME}: healthy"
