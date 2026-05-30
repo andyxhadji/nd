@@ -8,6 +8,80 @@ import {
 import { fetchExecutionDetails } from '../api/agentfield';
 
 /**
+ * Extract source metadata for grouping approvals by MR/issue.
+ * Primary: read from pause context (new executions).
+ * Fallback: parse approval_request_url (old executions).
+ */
+function extractSourceMetadata(data: any): {
+  sourceUrl: string;
+  sourceType: 'mr' | 'issue';
+  sourceIdentifier: string;
+} {
+  // Primary: extract from pause context (new executions)
+  if (data.source_url && data.source_identifier) {
+    return {
+      sourceUrl: data.source_url,
+      sourceType: data.source_type || 'mr',
+      sourceIdentifier: data.source_identifier,
+    };
+  }
+
+  // Fallback: derive from approval_request_url (old executions)
+  const url = data.approval_request_url || '';
+
+  // Parse GitLab MR URL
+  const gitlabMrMatch = url.match(/gitlab\.com\/([^/]+)\/([^/]+)\/-\/merge_requests\/(\d+)/);
+  if (gitlabMrMatch) {
+    const [, owner, repo, number] = gitlabMrMatch;
+    return {
+      sourceUrl: url,
+      sourceType: 'mr',
+      sourceIdentifier: `gitlab:${owner}/${repo}#${number}`,
+    };
+  }
+
+  // Parse GitLab issue URL
+  const gitlabIssueMatch = url.match(/gitlab\.com\/([^/]+)\/([^/]+)\/-\/issues\/(\d+)/);
+  if (gitlabIssueMatch) {
+    const [, owner, repo, number] = gitlabIssueMatch;
+    return {
+      sourceUrl: url,
+      sourceType: 'issue',
+      sourceIdentifier: `gitlab:${owner}/${repo}#${number}`,
+    };
+  }
+
+  // Parse GitHub PR URL
+  const githubPrMatch = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+  if (githubPrMatch) {
+    const [, owner, repo, number] = githubPrMatch;
+    return {
+      sourceUrl: url,
+      sourceType: 'mr',
+      sourceIdentifier: `github:${owner}/${repo}#${number}`,
+    };
+  }
+
+  // Parse GitHub issue URL
+  const githubIssueMatch = url.match(/github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)/);
+  if (githubIssueMatch) {
+    const [, owner, repo, number] = githubIssueMatch;
+    return {
+      sourceUrl: url,
+      sourceType: 'issue',
+      sourceIdentifier: `github:${owner}/${repo}#${number}`,
+    };
+  }
+
+  // Fallback: ungrouped
+  return {
+    sourceUrl: url || 'unknown',
+    sourceType: 'mr',
+    sourceIdentifier: 'ungrouped:unknown#0',
+  };
+}
+
+/**
  * Parse AgentField execution details to extract approval context.
  * The data structure comes from /api/ui/v1/executions/{id}/details
  */
@@ -44,6 +118,9 @@ export async function parseApprovalContext(data: any): Promise<ApprovalContext |
   const commentMatch = taskBody.match(/## Original Comment\n\*\*Author:\*\* [^\n]+\n\n(.*?)\n\n## Metadata/s);
   const originalComment = commentMatch ? commentMatch[1].trim() : 'No comment available';
 
+  // Extract source metadata for grouping
+  const { sourceUrl, sourceType, sourceIdentifier } = extractSourceMetadata(data);
+
   const baseContext: ApprovalContext = {
     approvalType,
     taskId,
@@ -54,6 +131,9 @@ export async function parseApprovalContext(data: any): Promise<ApprovalContext |
     originalComment,
     taskTitle,
     projectName,
+    sourceUrl,
+    sourceType,
+    sourceIdentifier,
   };
 
   // Add type-specific context (requires fetching sibling execution details)
