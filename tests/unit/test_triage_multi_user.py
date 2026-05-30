@@ -1,10 +1,11 @@
 """Unit tests for multi-user support in triage agent comment polling."""
 
-import pytest
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from nd.clients.middleman import MiddlemanClient, MRComment
+import pytest
+
+from nd.clients.middleman import MiddlemanClient
 from nd.config import Config
 
 

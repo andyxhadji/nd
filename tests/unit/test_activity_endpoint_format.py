@@ -1,7 +1,6 @@
 """Unit tests for MRComment.from_dict with activity endpoint format."""
 
-import pytest
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from nd.clients.middleman import MRComment
 
