@@ -2,7 +2,7 @@
 
 from nd.clients.kata import KataClient
 from nd.schemas import WorkspaceResult
-from nd.worker.agent import _parse_task_body
+from nd.worker.agent import _extract_source_metadata, _parse_task_body
 
 
 class TestParseTaskBody:
@@ -25,8 +25,8 @@ class TestParseTaskBody:
         assert ctx["category"] == "issue"
         assert ctx["repo_owner"] == "octocat"
         assert ctx["repo_name"] == "Hello-World"
-        assert ctx["mr_number"] == 42
-        assert ctx["mr_url"] == "https://github.com/octocat/Hello-World/issues/42"
+        assert ctx["issue_number"] == 42
+        assert ctx["issue_url"] == "https://github.com/octocat/Hello-World/issues/42"
         assert ctx["mr_title"] == "Add new feature"
         assert ctx["platform"] == "github"
         assert ctx["platform_host"] == "github.com"
@@ -69,6 +69,76 @@ class TestParseTaskBody:
         ctx = _parse_task_body("just some random text")
         assert ctx is not None
         assert ctx["comment_body"] == "just some random text"
+
+
+class TestExtractSourceMetadata:
+    """Tests for _extract_source_metadata helper function."""
+
+    def test_mr_comment_with_full_data(self):
+        """MR comment task with both mr_number and mr_url."""
+        source_url, source_type, source_identifier = _extract_source_metadata(
+            platform="gitlab",
+            platform_host="gitlab.com",
+            repo_owner="org",
+            repo_name="repo",
+            mr_number=7,
+            mr_url="https://gitlab.com/org/repo/-/merge_requests/7",
+        )
+        assert source_url == "https://gitlab.com/org/repo/-/merge_requests/7"
+        assert source_type == "mr"
+        assert source_identifier == "gitlab:org/repo#7"
+
+    def test_issue_with_full_data(self):
+        """Issue task with both issue_number and issue_url."""
+        source_url, source_type, source_identifier = _extract_source_metadata(
+            platform="github",
+            platform_host="github.com",
+            repo_owner="octocat",
+            repo_name="Hello-World",
+            issue_number=42,
+            issue_url="https://github.com/octocat/Hello-World/issues/42",
+        )
+        assert source_url == "https://github.com/octocat/Hello-World/issues/42"
+        assert source_type == "issue"
+        assert source_identifier == "github:octocat/Hello-World#42"
+
+    def test_fallback_mr_number_without_url(self):
+        """Fallback: mr_number provided but no mr_url."""
+        source_url, source_type, source_identifier = _extract_source_metadata(
+            platform="gitlab",
+            platform_host="gitlab.com",
+            repo_owner="org",
+            repo_name="repo",
+            mr_number=99,
+        )
+        assert source_url == "https://gitlab.com/org/repo/-/merge_requests/99"
+        assert source_type == "mr"
+        assert source_identifier == "gitlab:org/repo#99"
+
+    def test_fallback_issue_number_without_url(self):
+        """Fallback: issue_number provided but no issue_url."""
+        source_url, source_type, source_identifier = _extract_source_metadata(
+            platform="github",
+            platform_host="github.com",
+            repo_owner="octocat",
+            repo_name="Hello-World",
+            issue_number=123,
+        )
+        assert source_url == "https://github.com/octocat/Hello-World/-/issues/123"
+        assert source_type == "issue"
+        assert source_identifier == "github:octocat/Hello-World#123"
+
+    def test_no_source_data(self):
+        """Edge case: no source data at all."""
+        source_url, source_type, source_identifier = _extract_source_metadata(
+            platform="gitlab",
+            platform_host="gitlab.com",
+            repo_owner="org",
+            repo_name="repo",
+        )
+        assert source_url == "unknown"
+        assert source_type == "mr"
+        assert source_identifier == "unknown:unknown#0"
 
 
 class TestWorkspaceResultShape:
