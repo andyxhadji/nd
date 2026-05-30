@@ -7,10 +7,19 @@ import {
 } from '../api/types';
 import { fetchExecutionDetails } from '../api/agentfield';
 
+// Regex patterns for URL parsing
+const GITLAB_MR_PATTERN = /gitlab\.com\/(.*?)\/-\/merge_requests\/(\d+)/;
+const GITLAB_ISSUE_PATTERN = /gitlab\.com\/(.*?)\/-\/issues\/(\d+)/;
+const GITHUB_PR_PATTERN = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
+const GITHUB_ISSUE_PATTERN = /github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)/;
+
 /**
  * Extract source metadata for grouping approvals by MR/issue.
  * Primary: read from pause context (new executions).
  * Fallback: parse approval_request_url (old executions).
+ *
+ * @param data - Execution data containing source information
+ * @returns Object with sourceUrl, sourceType, and sourceIdentifier
  */
 function extractSourceMetadata(data: any): {
   sourceUrl: string;
@@ -18,41 +27,47 @@ function extractSourceMetadata(data: any): {
   sourceIdentifier: string;
 } {
   // Primary: extract from pause context (new executions)
-  if (data.source_url && data.source_identifier) {
-    return {
-      sourceUrl: data.source_url,
-      sourceType: data.source_type || 'mr',
-      sourceIdentifier: data.source_identifier,
-    };
+  if (data.source_url && data.source_identifier && data.source_type) {
+    // Validate source_identifier format (basic check for expected pattern)
+    const identifier = String(data.source_identifier);
+    if (identifier && identifier.includes(':') && identifier.includes('#')) {
+      return {
+        sourceUrl: data.source_url,
+        sourceType: data.source_type,
+        sourceIdentifier: identifier,
+      };
+    }
+    // If validation fails, fall through to URL parsing
+    console.warn('Invalid source_identifier format, falling back to URL parsing:', identifier);
   }
 
   // Fallback: derive from approval_request_url (old executions)
   const url = data.approval_request_url || '';
 
-  // Parse GitLab MR URL
-  const gitlabMrMatch = url.match(/gitlab\.com\/([^/]+)\/([^/]+)\/-\/merge_requests\/(\d+)/);
+  // Parse GitLab MR URL (supports nested groups like gitlab.com/group/subgroup/project/-/merge_requests/123)
+  const gitlabMrMatch = url.match(GITLAB_MR_PATTERN);
   if (gitlabMrMatch) {
-    const [, owner, repo, number] = gitlabMrMatch;
+    const [, fullPath, number] = gitlabMrMatch;
     return {
       sourceUrl: url,
       sourceType: 'mr',
-      sourceIdentifier: `gitlab:${owner}/${repo}#${number}`,
+      sourceIdentifier: `gitlab:${fullPath}#${number}`,
     };
   }
 
-  // Parse GitLab issue URL
-  const gitlabIssueMatch = url.match(/gitlab\.com\/([^/]+)\/([^/]+)\/-\/issues\/(\d+)/);
+  // Parse GitLab issue URL (supports nested groups)
+  const gitlabIssueMatch = url.match(GITLAB_ISSUE_PATTERN);
   if (gitlabIssueMatch) {
-    const [, owner, repo, number] = gitlabIssueMatch;
+    const [, fullPath, number] = gitlabIssueMatch;
     return {
       sourceUrl: url,
       sourceType: 'issue',
-      sourceIdentifier: `gitlab:${owner}/${repo}#${number}`,
+      sourceIdentifier: `gitlab:${fullPath}#${number}`,
     };
   }
 
   // Parse GitHub PR URL
-  const githubPrMatch = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+  const githubPrMatch = url.match(GITHUB_PR_PATTERN);
   if (githubPrMatch) {
     const [, owner, repo, number] = githubPrMatch;
     return {
@@ -63,7 +78,7 @@ function extractSourceMetadata(data: any): {
   }
 
   // Parse GitHub issue URL
-  const githubIssueMatch = url.match(/github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)/);
+  const githubIssueMatch = url.match(GITHUB_ISSUE_PATTERN);
   if (githubIssueMatch) {
     const [, owner, repo, number] = githubIssueMatch;
     return {
