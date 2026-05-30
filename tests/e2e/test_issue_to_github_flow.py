@@ -64,8 +64,14 @@ async def test_issue_to_github_complete_flow(
     assert triage_result["tasks_created"] == 1
     assert len(triage_result.get("errors", [])) == 0
 
-    # Verify task was created in kata
-    tasks_after_triage = await kata_client.list_tasks()
+    # Verify task was created in kata (with retry for eventual consistency)
+    max_retries = 5
+    for i in range(max_retries):
+        tasks_after_triage = await kata_client.list_tasks()
+        if len(tasks_after_triage) == count_before + 1:
+            break
+        if i < max_retries - 1:
+            await asyncio.sleep(0.5)
     assert len(tasks_after_triage) == count_before + 1
 
     # Find the newly created task
