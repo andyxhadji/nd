@@ -271,4 +271,8 @@ class ProcessResult(BaseModel):
     status: Literal["completed", "paused_for_spec", "paused_for_review", "failed"]
     changes_made: list[str] = Field(default_factory=list)
     response_draft: str | None = None
+    commit_sha: str | None = None
+    diff: str | None = None
+    roborev_passed: bool | None = None
+    roborev_findings: list[str] = Field(default_factory=list)
     error: str | None = None

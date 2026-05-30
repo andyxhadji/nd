@@ -496,15 +496,17 @@ async def test_worker_fails_issue_task_when_merge_request_creation_fails(monkeyp
                 success=True,
                 files_changed=["parser.py"],
                 commit_sha="abc1234",
+                diff="diff --git a/parser.py...",
             ).model_dump()
         if reasoner == "run_roborev":
             return RoborevResult(passed=True, iterations=1).model_dump()
         if reasoner == "draft_response":
             draft_calls.append(kwargs)
-            return DraftResult(response_text="Should not draft.", confident=True).model_dump()
+            return DraftResult(response_text="Fixed the parser.", confident=True).model_dump()
         return await dispatch_reasoner(app, name, **kwargs)
 
     monkeypatch.setattr(app, "call", fake_call)
+    monkeypatch.setattr(app, "pause", approved_pause)
 
     result = await app._reasoner_registry["process_task"].func(
         task_id="repo#0007",
@@ -518,6 +520,10 @@ async def test_worker_fails_issue_task_when_merge_request_creation_fails(monkeyp
         "status": "failed",
         "changes_made": [],
         "response_draft": None,
+        "commit_sha": None,
+        "diff": None,
+        "roborev_passed": None,
+        "roborev_findings": [],
         "error": "merge request creation failed",
     }
     assert ("repo#0007", "failed") in fake_kata.labels
@@ -525,7 +531,8 @@ async def test_worker_fails_issue_task_when_merge_request_creation_fails(monkeyp
         {"platform": "gitlab", "repo_path": "/tmp/nd-work/repo-0007", "branch": "nd/issue-0007"}
     ]
     assert fake_platform.merge_requests
-    assert draft_calls == []
+    # draft_response is now called before publish, so it should be called once
+    assert len(draft_calls) == 1
 
 
 @pytest.mark.asyncio

@@ -312,23 +312,42 @@ def create_worker_agent(
         )
         roborev = RoborevResult(**roborev_result)
 
-        if not roborev.passed:
-            # Pause for human review of roborev failure
-            approval = await app.pause(
-                approval_request_id=f"roborev-{task_id}",
-                approval_request_url=context.get("mr_url", ""),
-                expires_in_hours=72,
-                timeout=259200,
-            )
+        # Draft response (before publishing)
+        draft_result = await app.call(
+            f"{app.node_id}.draft_response",
+            comment_body=context["comment_body"],
+            changes_made=execution.files_changed,
+            commit_sha=execution.commit_sha or "",
+            commit_diff=execution.diff or "",
+            roborev_passed=roborev.passed,
+            roborev_findings=roborev.final_findings,
+        )
+        draft = DraftResult(**draft_result)
 
-            if not approval.approved:
-                await kata.label(task_id, "needs-human")
-                await _maybe_cleanup_on_failure()
-                return ProcessResult(
-                    status="paused_for_review",
-                    error="Roborev failed and human rejected",
-                ).model_dump()
+        # Single approval gate for both changes and response
+        # The dashboard will show the diff and draft response together
+        approval = await app.pause(
+            approval_request_id=f"review-{task_id}",
+            approval_request_url=context.get("mr_url", ""),
+            expires_in_hours=72,
+            timeout=259200,
+        )
 
+        if not approval.approved:
+            await kata.label(task_id, "needs-human")
+            await _maybe_cleanup_on_failure()
+            return ProcessResult(
+                status="paused_for_review",
+                changes_made=execution.files_changed,
+                response_draft=draft.response_text,
+                commit_sha=execution.commit_sha,
+                diff=execution.diff,
+                roborev_passed=roborev.passed,
+                roborev_findings=roborev.final_findings,
+                error="Human rejected changes and/or response",
+            ).model_dump()
+
+        # Publish changes after approval
         publish_result = await app.call(
             f"{app.node_id}.publish_changes",
             repo_path=repo_path,
@@ -349,33 +368,6 @@ def create_worker_agent(
             return ProcessResult(
                 status="failed",
                 error=publish.error or "publish failed",
-            ).model_dump()
-
-        # Draft response
-        draft_result = await app.call(
-            f"{app.node_id}.draft_response",
-            comment_body=context["comment_body"],
-            changes_made=execution.files_changed,
-            commit_sha=execution.commit_sha or "",
-            commit_diff="",
-        )
-        draft = DraftResult(**draft_result)
-
-        # Always pause for response approval
-        approval = await app.pause(
-            approval_request_id=f"post-{task_id}",
-            approval_request_url=publish.merge_request_url or context.get("mr_url", ""),
-            expires_in_hours=72,
-            timeout=259200,
-        )
-
-        if not approval.approved:
-            await kata.label(task_id, "addressed")
-            await _maybe_cleanup_on_failure()
-            return ProcessResult(
-                status="paused_for_review",
-                changes_made=execution.files_changed,
-                response_draft=draft.response_text,
             ).model_dump()
 
         # Get potentially edited response from approval
@@ -420,6 +412,10 @@ def create_worker_agent(
             status="completed",
             changes_made=execution.files_changed,
             response_draft=final_response,
+            commit_sha=execution.commit_sha,
+            diff=execution.diff,
+            roborev_passed=roborev.passed,
+            roborev_findings=roborev.final_findings,
         ).model_dump()
 
     @app.reasoner()
@@ -699,8 +695,18 @@ Create a detailed spec.""",
         changes_made: list[str],
         commit_sha: str,
         commit_diff: str,
+        roborev_passed: bool = True,
+        roborev_findings: list[str] | None = None,
     ) -> dict:
         """Generate response text based on changes made."""
+
+        # Build context about code quality
+        roborev_context = ""
+        if not roborev_passed and roborev_findings:
+            roborev_context = (
+                f"\n\nNote: Roborev found {len(roborev_findings)} issue(s):\n"
+                + "\n".join(f"- {finding}" for finding in roborev_findings[:5])
+            )
 
         # Don't use schema - the LLM double-nests the response and breaks validation
         # Instead, get unstructured response and parse manually
@@ -715,7 +721,7 @@ Return a JSON object with exactly two fields:
             user=f"""The author said: {comment_body}
 
 We changed these files: {changes_made}
-In this commit: {commit_sha}
+In this commit: {commit_sha}{roborev_context}
 
 Draft the reply.""",
         )
