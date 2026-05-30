@@ -7,7 +7,9 @@ import pytest
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Kata CLI/API synchronization issue - task created via API doesn't appear in CLI list")
+@pytest.mark.skip(
+    reason="Kata CLI/API synchronization issue - task created via API doesn't appear in CLI list"
+)
 async def test_issue_to_github_complete_flow(
     e2e_env,
     mock_middleman,
