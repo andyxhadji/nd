@@ -616,6 +616,53 @@ async def test_worker_processes_gitlab_mr_task_pushes_branch_and_posts_response(
 
 
 @pytest.mark.asyncio
+async def test_draft_response_includes_roborev_findings(monkeypatch):
+    """Test that draft_response includes roborev findings when provided."""
+    app, *_ = _make_worker_agent(monkeypatch)
+
+    # Mock the LLM call to verify roborev findings are passed to the prompt
+    llm_calls = []
+
+    async def mock_ai(**kwargs):
+        llm_calls.append(kwargs)
+        # Return mock response matching expected structure
+        return {"message": "Fixed the parser bug in abc123", "confident": False}
+
+    monkeypatch.setattr(app, "ai", mock_ai)
+
+    result = await app._reasoner_registry["draft_response"].func(
+        comment_body="Fix the parser bug",
+        changes_made=["parser.py", "tests/test_parser.py"],
+        commit_sha="abc123",
+        roborev_passed=False,
+        roborev_findings=[
+            "Missing error handling in parse_input()",
+            "Unused variable 'temp' in line 42",
+            "Consider adding docstring to helper function",
+        ],
+    )
+
+    # Verify result structure
+    assert "response_text" in result
+    assert "confident" in result
+    response = result["response_text"]
+
+    # Verify the LLM was called
+    assert len(llm_calls) == 1
+    llm_call = llm_calls[0]
+
+    # Verify roborev findings were included in the prompt
+    user_prompt = llm_call["user"]
+    assert "Roborev found 3 issue(s)" in user_prompt
+    assert "Missing error handling" in user_prompt
+
+    # Verify the response includes commit reference
+    assert "abc123" in response
+    assert isinstance(response, str)
+    assert len(response) > 0
+
+
+@pytest.mark.asyncio
 async def test_execute_changes_fails_when_harness_makes_no_changes(monkeypatch, tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
