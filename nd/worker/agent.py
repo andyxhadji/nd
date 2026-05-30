@@ -423,7 +423,7 @@ def create_worker_agent(
             repo_name=context.get("repo_name", project),
             base_branch=ws.base_branch or context.get("base_branch", "main"),
             title=context.get("mr_title", title),
-            source_url=context.get("mr_url", ""),
+            source_url=context.get("issue_url") or context.get("mr_url", ""),
             is_issue=is_issue,
         )
         publish = PublishResult(**publish_result)
