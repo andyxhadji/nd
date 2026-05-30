@@ -72,6 +72,40 @@ ruff format --check .
 
 CI (`.github/workflows/ci.yml`) runs `ruff check`, `ruff format --check`, unit tests, and enforces ≥50% coverage. Match this locally before pushing.
 
+## Working in Git Worktrees
+
+This repository is often used with git worktrees. **Important:** Docker containers must be started from the worktree directory you're currently working in.
+
+### Common Issue: `/var/nd/work` not found
+
+**Symptom:** Agent execution fails with `[Errno 2] No such file or directory: '/var/nd/work'`
+
+**Root cause:** Docker containers were started from a different worktree, and the volume mount `${ND_WORKSPACE_ROOT:-./.nd-workspace}:/var/nd` is relative to where `docker-compose up` was run.
+
+**Solution:**
+```bash
+# Stop containers from the old worktree
+docker-compose -p <old-project-name> down
+
+# Create workspace directory in current worktree
+mkdir -p .nd-workspace/work
+
+# Start containers from current worktree
+docker-compose up -d
+```
+
+The `.nd-workspace/` directory is gitignored and local to each worktree.
+
+### Alternative: Shared Workspace Across Worktrees
+
+If you want all worktrees to share the same workspace:
+```bash
+# Set in .env.local
+ND_WORKSPACE_ROOT=/Users/andy/.nd-workspace-shared
+```
+
+Then `mkdir -p /Users/andy/.nd-workspace-shared/work` and restart containers. This allows tasks created in one worktree to be visible in others.
+
 ## Refreshing AWS Credentials
 
 When AWS credentials expire, follow this workflow to update the docker-compose environment:
@@ -91,7 +125,9 @@ docker-compose down
 docker-compose up -d
 
 # 4. Verify credentials loaded and have Bedrock access
-docker exec hyper-furniture-worker-1-1 sh -c '
+# Note: container name is <directory-name>-worker-1-1 (based on current directory name)
+docker ps --filter "name=worker-1" --format "{{.Names}}"  # Find exact container name
+docker exec <container-name>-worker-1-1 sh -c '
   python3 -c "import boto3; sts = boto3.client(\"sts\", region_name=\"us-east-1\"); print(\"Identity:\", sts.get_caller_identity()[\"Arn\"])"
 '
 # Should show: arn:aws:sts::657062785455:assumed-role/horizon-okta/andy
@@ -132,7 +168,12 @@ Full table is in `README.md`.
 3. Add a deterministic helper in `triage/classifier.py` or `worker/analyzer.py` if applicable.
 4. Add the reasoner to `triage/agent.py` or `worker/agent.py`. Tag with `entry` only if it's a polling/claiming entrypoint.
 5. Unit-test the helper and the reasoner wiring under `tests/unit/`.
-6. **Lint and format before committing** — run `ruff check .` and `ruff format .` to fix all linting and formatting issues.
+6. **Lint and format before committing**:
+   ```bash
+   ruff check .        # Check for linting issues
+   ruff format .       # Auto-format code
+   ```
+   All linting must pass before committing. CI enforces this.
 7. **Run tests** — `pytest tests/unit` must pass before committing.
 
 ## Things to avoid
