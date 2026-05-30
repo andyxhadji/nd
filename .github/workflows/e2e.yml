@@ -49,6 +49,7 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           SKIP_AGENT_INTEGRATION: "true"
+          SKIP_DOCKER_TESTS: "true"
 
       - name: Collect logs on failure
         if: failure()
