@@ -14,6 +14,7 @@ class Config:
     """Application configuration from environment."""
 
     agentfield_url: str
+    worker_node_id: str
     middleman_url: str
     middleman_db: str
     kata_server: str
@@ -37,6 +38,7 @@ class Config:
         """Load configuration from environment variables."""
         return cls(
             agentfield_url=os.getenv("AGENTFIELD_URL", "http://localhost:8080"),
+            worker_node_id=os.getenv("WORKER_NODE_ID", "nd-worker"),
             middleman_url=os.getenv("MIDDLEMAN_URL", "http://localhost:8091"),
             middleman_db=os.path.expanduser(os.getenv("MIDDLEMAN_DB", "~/.middleman/middleman.db")),
             kata_server=os.getenv("KATA_SERVER", ""),

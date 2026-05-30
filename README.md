@@ -30,6 +30,7 @@ All configuration via environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AGENTFIELD_URL` | `http://localhost:8080` | AgentField control plane URL |
+| `WORKER_NODE_ID` | `nd-worker` | Worker agent node ID to trigger when tasks are created |
 | `MIDDLEMAN_URL` | `http://localhost:8091` | Middleman API URL |
 | `MIDDLEMAN_DB` | `~/.middleman/middleman.db` | Middleman SQLite database path |
 | `KATA_SERVER` | (empty) | Kata daemon URL. Empty → local auto-start (host runs only). For Docker, compose sets `http://127.0.0.1:7878` so agents reach the in-compose `kata-daemon` service over the shared network namespace. |

@@ -273,6 +273,16 @@ Respond with:
         )
 
         if task_id:
+            # Trigger worker to claim the newly created task
+            try:
+                await app.call(
+                    f"{config.worker_node_id}.claim_task",
+                    payload=None,
+                )
+            except Exception as e:
+                # Log but don't fail task creation if worker trigger fails
+                print(f"Warning: Failed to trigger worker for task {task_id}: {e}")
+
             return TaskCreationResult(created=True, task_id=task_id).model_dump()
         else:
             return TaskCreationResult(
@@ -404,6 +414,16 @@ Respond with:
         )
 
         if task_id:
+            # Trigger worker to claim the newly created task
+            try:
+                await app.call(
+                    f"{config.worker_node_id}.claim_task",
+                    payload=None,
+                )
+            except Exception as e:
+                # Log but don't fail task creation if worker trigger fails
+                print(f"Warning: Failed to trigger worker for task {task_id}: {e}")
+
             return TaskCreationResult(created=True, task_id=task_id).model_dump()
         else:
             return TaskCreationResult(
