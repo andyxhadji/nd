@@ -10,16 +10,20 @@ def test_total_e2e_test_count():
         capture_output=True,
         text=True,
     )
+    assert result.returncode == 0
 
     # Parse "X tests collected" from output
+    found = False
     for line in result.stdout.split("\n"):
         if "test" in line and "collected" in line:
+            found = True
             count = int(line.split()[0])
             assert count <= 40, (
                 f"E2E suite has grown to {count} tests. "
                 "Review for duplicates or move to unit tests."
             )
             break
+    assert found
 
 
 def test_no_skipped_agent_integration_tests_in_ci():
@@ -36,6 +40,7 @@ def test_no_skipped_agent_integration_tests_in_ci():
         capture_output=True,
         text=True,
     )
+    assert result.returncode == 0
 
     # Should see SKIPPED marker for agent integration tests
     assert "test_simple_request_flow" in result.stdout

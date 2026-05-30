@@ -1,8 +1,9 @@
 """
 Validation tests for the E2E framework itself.
 
-These tests verify the framework structure without requiring docker-compose.
-They test fixtures, helpers, and mock service logic.
+These tests verify the framework structure, fixtures, helpers, and infrastructure.
+Most tests run without docker-compose (fast validation), while infrastructure
+validation tests require docker-compose to verify service reachability.
 """
 
 import json
