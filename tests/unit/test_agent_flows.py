@@ -518,11 +518,11 @@ async def test_worker_fails_issue_task_when_merge_request_creation_fails(monkeyp
 
     assert result == {
         "status": "failed",
-        "changes_made": [],
-        "response_draft": None,
-        "commit_sha": None,
-        "diff": None,
-        "roborev_passed": None,
+        "changes_made": ["parser.py"],
+        "response_draft": "Fixed the parser.",
+        "commit_sha": "abc1234",
+        "diff": "diff --git a/parser.py...",
+        "roborev_passed": True,
         "roborev_findings": [],
         "error": "merge request creation failed",
     }
@@ -570,6 +570,7 @@ async def test_worker_processes_gitlab_mr_task_pushes_branch_and_posts_response(
                 success=True,
                 files_changed=["tests/test_parser.py"],
                 commit_sha="def5678",
+                diff="diff --git a/tests/test_parser.py...",
             ).model_dump()
         if reasoner == "run_roborev":
             return RoborevResult(passed=True, iterations=1).model_dump()
@@ -591,6 +592,10 @@ async def test_worker_processes_gitlab_mr_task_pushes_branch_and_posts_response(
     )
 
     assert result["status"] == "completed"
+    assert result["commit_sha"] == "def5678"
+    assert result["diff"] == "diff --git a/tests/test_parser.py..."
+    assert result["roborev_passed"] is True
+    assert result["roborev_findings"] == []
     assert fake_workspace.prepared[0]["head_branch"] == "feature/parser"
     assert fake_workspace.pushed == [
         {"platform": "gitlab", "repo_path": "/tmp/nd-work/repo-0007", "branch": "feature/parser"}

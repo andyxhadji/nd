@@ -318,7 +318,6 @@ def create_worker_agent(
             comment_body=context["comment_body"],
             changes_made=execution.files_changed,
             commit_sha=execution.commit_sha or "",
-            commit_diff=execution.diff or "",
             roborev_passed=roborev.passed,
             roborev_findings=roborev.final_findings,
         )
@@ -367,6 +366,12 @@ def create_worker_agent(
             await _maybe_cleanup_on_failure()
             return ProcessResult(
                 status="failed",
+                changes_made=execution.files_changed,
+                response_draft=draft.response_text,
+                commit_sha=execution.commit_sha,
+                diff=execution.diff,
+                roborev_passed=roborev.passed,
+                roborev_findings=roborev.final_findings,
                 error=publish.error or "publish failed",
             ).model_dump()
 
@@ -694,7 +699,6 @@ Create a detailed spec.""",
         comment_body: str,
         changes_made: list[str],
         commit_sha: str,
-        commit_diff: str,
         roborev_passed: bool = True,
         roborev_findings: list[str] | None = None,
     ) -> dict:
