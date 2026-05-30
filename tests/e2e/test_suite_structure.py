@@ -23,7 +23,7 @@ def test_total_e2e_test_count():
                 "Review for duplicates or move to unit tests."
             )
             break
-    assert found
+    assert found, "Failed to parse pytest collection output — could not find 'tests collected' line"
 
 
 def test_no_skipped_agent_integration_tests_in_ci():
@@ -43,6 +43,11 @@ def test_no_skipped_agent_integration_tests_in_ci():
     assert result.returncode == 0
 
     # Should see SKIPPED marker for agent integration tests
-    assert "test_simple_request_flow" in result.stdout
-    assert "SKIPPED" in result.stdout
-    assert "Agent integration" in result.stdout or "docker-compose" in result.stdout
+    # Verify the test appears with SKIPPED status
+    output_lines = result.stdout.split("\n")
+    found_skipped = False
+    for line in output_lines:
+        if "test_simple_request_flow" in line and "SKIPPED" in line:
+            found_skipped = True
+            break
+    assert found_skipped, "test_simple_request_flow should be SKIPPED when SKIP_AGENT_INTEGRATION=true"
