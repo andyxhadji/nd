@@ -1,7 +1,6 @@
 """Full end-to-end tests covering the complete agent workflow."""
 
 import asyncio
-import os
 
 import pytest
 

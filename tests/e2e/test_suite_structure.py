@@ -27,27 +27,20 @@ def test_total_e2e_test_count():
 
 
 def test_no_skipped_agent_integration_tests_in_ci():
-    """Ensure agent integration tests are properly skipped when env flag is set."""
-    import os
-
-    if os.getenv("SKIP_AGENT_INTEGRATION") != "true":
-        # Not running in CI mode, skip this check
-        return
-
-    # Run pytest with -v to see skip status
+    """Ensure agent integration tests are properly deselected when using skip_ci marker."""
+    # Run pytest with -m "not skip_ci" to see what tests are selected
     result = subprocess.run(
-        ["pytest", "tests/e2e/test_full_e2e.py", "-v", "--tb=no"],
+        ["pytest", "tests/e2e/test_full_e2e.py", "-v", "--tb=no", "-m", "not skip_ci"],
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0
+    # Exit code 5 means no tests were selected (both were deselected), which is what we want
+    # Exit code 0 would mean tests ran and passed
+    assert result.returncode in (0, 5), f"Unexpected pytest exit code: {result.returncode}"
 
-    # Should see SKIPPED marker for agent integration tests
-    # Verify the test appears with SKIPPED status
-    output_lines = result.stdout.split("\n")
-    found_skipped = False
-    for line in output_lines:
-        if "test_simple_request_flow" in line and "SKIPPED" in line:
-            found_skipped = True
-            break
-    assert found_skipped, "test_simple_request_flow should be SKIPPED when SKIP_AGENT_INTEGRATION=true"
+    # Should see "2 deselected" in output for the two skip_ci tests
+    output = result.stdout
+    assert "2 deselected" in output, (
+        "Expected 2 tests with @pytest.mark.skip_ci to be deselected "
+        "when running with -m 'not skip_ci'"
+    )
